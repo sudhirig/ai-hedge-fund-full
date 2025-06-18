@@ -3,12 +3,48 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
 import subprocess
-import json
-import re
 import sys
+import json
+import time
+import re
+from pathlib import Path
 import os
 
-app = FastAPI()
+# Environment validation
+def validate_environment():
+    """Validate required environment variables and dependencies."""
+    missing_vars = []
+    warnings = []
+    
+    # Check required API keys
+    if not os.getenv("FINANCIAL_DATASETS_API_KEY"):
+        missing_vars.append("FINANCIAL_DATASETS_API_KEY")
+    
+    # Check optional LLM API keys
+    if not os.getenv("ANTHROPIC_API_KEY") and not os.getenv("OPENAI_API_KEY"):
+        warnings.append("No LLM API keys found - LLM agents will not function")
+    
+    if missing_vars:
+        raise ValueError(f"Missing required environment variables: {missing_vars}")
+    
+    return {"warnings": warnings}
+
+# Validate environment on startup
+try:
+    env_status = validate_environment()
+    if env_status["warnings"]:
+        print("⚠️  Environment warnings:")
+        for warning in env_status["warnings"]:
+            print(f"   - {warning}")
+except ValueError as e:
+    print(f"❌ Environment validation failed: {e}")
+    sys.exit(1)
+
+app = FastAPI(
+    title="AI Hedge Fund API",
+    description="Advanced AI-powered hedge fund simulation with multi-agent analysis",
+    version="1.0.0"
+)
 
 # Allow frontend requests from specific origins for local testing
 app.add_middleware(
@@ -34,83 +70,206 @@ class AgentChatRequest(BaseModel):
     message: str
     chat_history: Optional[List[ChatMessage]] = Field(default_factory=list)
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint with detailed system status."""
+    try:
+        # Check environment variables
+        env_status = {
+            "financial_api": bool(os.getenv("FINANCIAL_DATASETS_API_KEY")),
+            "anthropic_api": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "openai_api": bool(os.getenv("OPENAI_API_KEY")),
+        }
+        
+        # Check if main.py exists
+        main_py_path = Path(__file__).parent.parent / "src" / "main.py"
+        main_py_exists = main_py_path.exists()
+        
+        # Check critical dependencies
+        try:
+            import pandas
+            import yfinance
+            pandas_ok = True
+        except ImportError:
+            pandas_ok = False
+        
+        status = "healthy" if main_py_exists and pandas_ok and env_status["financial_api"] else "degraded"
+        
+        return {
+            "status": status,
+            "timestamp": time.time(),
+            "environment": env_status,
+            "dependencies": {
+                "main_script": main_py_exists,
+                "pandas": pandas_ok
+            },
+            "warnings": [] if status == "healthy" else ["Some components may not function properly"]
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "timestamp": time.time(),
+            "error": str(e)
+        }
+
 @app.post("/api/run")
 async def run_simulation(req: RunRequest):
-    cmd = [
-        "poetry", "run", "python", "src/main.py",
-        "--tickers", req.tickers,
-        "--start-date", req.start_date,
-        "--end-date", req.end_date,
-        "--initial-cash", str(req.initial_cash),
-        "--show-reasoning",
-        "--no-interactive"
-    ]
-    import re, json
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=90)
-        output = result.stdout
-
-        # Parse agent blocks: e.g. '==========  Fundamental Analysis Agent  ==========' ... {json} ... '================================================'
-        agent_blocks = re.findall(r'=+\s+([\w\s]+Agent[\w\s]*)=+\n(\{[\s\S]+?\})\n=+', output)
-        agents = {}
-        for name, block in agent_blocks:
-            agent_name = name.strip()
-            try:
-                parsed = json.loads(block)
-                # Special handling for Risk Management Agent: fill missing fields with defaults
-                if agent_name == "Risk Management Agent":
-                    for ticker in (parsed.keys() if isinstance(parsed, dict) else []):
-                        v = parsed[ticker]
-                        if isinstance(v, dict):
-                            for key in ["portfolio_value", "current_position", "position_limit", "remaining_limit", "available_cash"]:
-                                if key not in v.get("reasoning", {}):
-                                    if "reasoning" not in v:
-                                        v["reasoning"] = {}
-                                    v["reasoning"][key] = None
-                agents[agent_name] = parsed
-            except Exception:
-                # Fallback: try to parse as a dict of tickers with empty fields
-                if agent_name == "Risk Management Agent":
-                    import re
-                    tickers = re.findall(r'"([A-Z]+)"\s*:', block)
-                    agents[agent_name] = {t: {"reasoning": {"portfolio_value": None, "current_position": None, "position_limit": None, "remaining_limit": None, "available_cash": None}} for t in tickers}
-                else:
-                    agents[agent_name] = block
-
-        # Parse trading decisions: e.g. 'TRADING DECISION: [AAPL]' ... table ...
-        # Loosen the regex to allow for optional blank/comment lines between header and table
-        decision_blocks = re.findall(r'TRADING DECISION: \[(.*?)\][^\S\r\n]*\n(?:[ \t]*\n)*([+\-|\w\s%.$:,\[\]]+)', output)
-        decisions = {}
-        for ticker, table in decision_blocks:
-            actions = re.findall(r'\|\s*Action\s*\|\s*(\w+)\s*\|', table)
-            qtys = re.findall(r'\|\s*Quantity\s*\|\s*(\d+)\s*\|', table)
-            confs = re.findall(r'\|\s*Confidence\s*\|\s*([\d.]+)%\s*\|', table)
-            reasons = re.findall(r'\|\s*Reasoning\s*\|(.+?)\|', table, re.DOTALL)
-            decisions[ticker] = {
-                'action': actions[0] if actions else '',
-                'quantity': int(qtys[0]) if qtys else 0,
-                'confidence': float(confs[0]) if confs else 0,
-                'reasoning': reasons[0].strip() if reasons else ''
-            }
-
-        return {
-            'agents': agents,
-            'decisions': decisions,
-            'raw': output
-        }
-    except subprocess.TimeoutExpired:
-        return {"error": "Simulation timed out"}
-    except subprocess.CalledProcessError as e:
-        import json
+        # Validate inputs
+        if not req.tickers:
+            raise ValueError("At least one ticker must be provided")
+        
+        # Get the absolute path to main.py
+        current_dir = Path(__file__).parent
+        main_py_path = current_dir.parent / "src" / "main.py"
+        
+        if not main_py_path.exists():
+            raise FileNotFoundError(f"main.py not found at {main_py_path}")
+        
+        # Prepare command arguments
+        cmd = [
+            sys.executable, str(main_py_path),
+            "--tickers", req.tickers,
+            "--start-date", req.start_date,
+            "--end-date", req.end_date,
+            "--initial-cash", str(req.initial_cash),
+            "--show-reasoning",
+            "--no-interactive"
+        ]
+        
+        print(f"🚀 Starting simulation with command: {' '.join(cmd)}")
+        
+        # Run the simulation with timeout and proper error handling
         try:
-            err_json = json.loads(e.stderr)
-            if isinstance(err_json, dict):
-                return err_json
-            elif isinstance(err_json, list) and len(err_json) > 0 and isinstance(err_json[0], dict):
-                return err_json[0]
-        except Exception:
-            pass
-        return {"error": e.stderr or 'Simulation failed'}
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minutes timeout
+                cwd=current_dir.parent,
+                env=os.environ.copy()  # Pass all environment variables
+            )
+            
+            if result.returncode != 0:
+                error_msg = f"Simulation failed with return code {result.returncode}"
+                if result.stderr:
+                    error_msg += f". Error: {result.stderr[:500]}"
+                
+                return {
+                    "status": "error",
+                    "message": error_msg,
+                    "details": {
+                        "stdout": result.stdout[-1000:] if result.stdout else "",
+                        "stderr": result.stderr[-1000:] if result.stderr else "",
+                        "return_code": result.returncode
+                    }
+                }
+            
+            # Parse the output
+            output = result.stdout
+            if not output.strip():
+                return {
+                    "status": "error",
+                    "message": "No output received from simulation",
+                    "details": {"stderr": result.stderr[-500:] if result.stderr else ""}
+                }
+            
+            print(f"✅ Simulation completed successfully. Output length: {len(output)} chars")
+            
+            # Parse agent blocks: e.g. '==========  Fundamental Analysis Agent  ==========' ... {json} ... '================================================'
+            agent_blocks = re.findall(r'=+\s+([\w\s]+Agent[\w\s]*)=+\n(\{[\s\S]+?\})\n=+', output)
+            agents = {}
+            for name, block in agent_blocks:
+                agent_name = name.strip()
+                try:
+                    parsed = json.loads(block)
+                    # Special handling for Risk Management Agent: fill missing fields with defaults
+                    if agent_name == "Risk Management Agent":
+                        for ticker in (parsed.keys() if isinstance(parsed, dict) else []):
+                            v = parsed[ticker]
+                            if isinstance(v, dict):
+                                for key in ["portfolio_value", "current_position", "position_limit", "remaining_limit", "available_cash"]:
+                                    if key not in v.get("reasoning", {}):
+                                        if "reasoning" not in v:
+                                            v["reasoning"] = {}
+                                        v["reasoning"][key] = None
+                    agents[agent_name] = parsed
+                except Exception:
+                    # Fallback: try to parse as a dict of tickers with empty fields
+                    if agent_name == "Risk Management Agent":
+                        tickers = re.findall(r'"([A-Z]+)"\s*:', block)
+                        agents[agent_name] = {t: {"reasoning": {"portfolio_value": None, "current_position": None, "position_limit": None, "remaining_limit": None, "available_cash": None}} for t in tickers}
+                    else:
+                        agents[agent_name] = block
+
+            # Parse trading decisions: e.g. 'TRADING DECISION: [AAPL]' ... table ...
+            # Loosen the regex to allow for optional blank/comment lines between header and table
+            decision_blocks = re.findall(r'TRADING DECISION: \[(.*?)\][^\S\r\n]*\n(?:[ \t]*\n)*([+\-|\w\s%.$:,\[\]]+)', output)
+            decisions = {}
+            for ticker, table in decision_blocks:
+                actions = re.findall(r'\|\s*Action\s*\|\s*(\w+)\s*\|', table)
+                qtys = re.findall(r'\|\s*Quantity\s*\|\s*(\d+)\s*\|', table)
+                confs = re.findall(r'\|\s*Confidence\s*\|\s*([\d.]+)%\s*\|', table)
+                reasons = re.findall(r'\|\s*Reasoning\s*\|(.+?)\|', table, re.DOTALL)
+                decisions[ticker] = {
+                    'action': actions[0] if actions else '',
+                    'quantity': int(qtys[0]) if qtys else 0,
+                    'confidence': float(confs[0]) if confs else 0,
+                    'reasoning': reasons[0].strip() if reasons else ''
+                }
+
+            return {
+                "status": "success", 
+                "data": {
+                    'agents': agents,
+                    'decisions': decisions,
+                    'raw': output
+                },
+                "metadata": {
+                    "execution_time": "N/A",  # Could add timing
+                    "tickers": req.tickers,
+                    "date_range": f"{req.start_date} to {req.end_date}"
+                }
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "error",
+                "message": "Simulation timed out after 5 minutes",
+                "details": {"timeout": 300}
+            }
+        
+        except subprocess.SubprocessError as e:
+            return {
+                "status": "error",
+                "message": f"Subprocess execution failed: {str(e)}",
+                "details": {"subprocess_error": str(e)}
+            }
+            
+    except FileNotFoundError as e:
+        return {
+            "status": "error",
+            "message": "Simulation script not found",
+            "details": {"file_error": str(e)}
+        }
+        
+    except ValueError as e:
+        return {
+            "status": "error",
+            "message": f"Invalid input: {str(e)}",
+            "details": {"validation_error": str(e)}
+        }
+        
+    except Exception as e:
+        print(f"❌ Unexpected error in simulation: {e}")
+        return {
+            "status": "error",
+            "message": "An unexpected error occurred",
+            "details": {
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        }
 
 @app.post("/api/agent-chat")
 async def agent_chat(req: AgentChatRequest):

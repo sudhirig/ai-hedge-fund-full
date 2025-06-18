@@ -24,6 +24,7 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
+import { API_ENDPOINTS } from '../config/api';
 
 const DEFAULT_TICKERS = "AAPL,MSFT";
 const DEFAULT_START_DATE = "2024-01-01";
@@ -151,41 +152,126 @@ export default function HedgeFundDashboard() {
   const [error, setError] = useState(null);
   const [tab, setTab] = useState(0);
   const [mainTab, setMainTab] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('');
 
   const handleRun = async () => {
     setLoading(true);
     setResult(null);
     setError(null);
+    setProgressStatus('Initializing simulation...');
+    
+    // Input validation
     try {
+      // Validate tickers
+      const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(t => t.length > 0);
+      if (tickerList.length === 0) {
+        setError('Please enter at least one ticker symbol (e.g., AAPL, MSFT)');
+        setLoading(false);
+        return;
+      }
+      
+      if (tickerList.some(ticker => ticker.length > 10 || !/^[A-Z0-9.-]+$/.test(ticker))) {
+        setError('Ticker symbols should contain only letters, numbers, dots, and hyphens (e.g., AAPL, BRK.B)');
+        setLoading(false);
+        return;
+      }
+      
+      // Validate dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const today = new Date();
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        setError('Please enter valid dates in YYYY-MM-DD format');
+        setLoading(false);
+        return;
+      }
+      
+      if (start >= end) {
+        setError('Start date must be before end date');
+        setLoading(false);
+        return;
+      }
+      
+      if (end > today) {
+        setError('End date cannot be in the future');
+        setLoading(false);
+        return;
+      }
+      
+      // Check for minimum date range (5 business days to avoid pandas NaN errors)
+      const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      if (daysDiff < 5) {
+        setError('Date range must be at least 5 days to ensure sufficient data for analysis');
+        setLoading(false);
+        return;
+      }
+      
+      // Validate initial cash
+      if (initialCash < 1000 || initialCash > 10000000) {
+        setError('Initial cash must be between $1,000 and $10,000,000');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('✅ Input validation passed');
       console.log('Sending request to /api/run with data:', {
-        tickers,
+        tickers: tickerList.join(','),
         start_date: startDate,
         end_date: endDate,
         initial_cash: initialCash,
       });
+      
+      setProgressStatus(`Validating ${tickerList.length} ticker(s) and preparing analysis...`);
       
       // Always use the local backend server for now
       // Try both localhost and IP address formats to improve connection reliability
-      const apiUrl = 'http://localhost:8000/api/run';
+      const apiUrl = API_ENDPOINTS.run;
       console.log('Using API URL:', apiUrl);
       
+      setProgressStatus('Connecting to AI analysis engine...');
+      
       const response = await axios.post(apiUrl, {
-        tickers,
+        tickers: tickerList.join(','),
         start_date: startDate,
         end_date: endDate,
         initial_cash: initialCash,
       });
       
+      setProgressStatus('Processing simulation results...');
       console.log('Received response:', response.data);
       
       // Handle different response formats
       if (response.data) {
-        // Force a re-render by creating a new object
-        setResult({...response.data});
+        // Check if this is the new structured response format
+        if (response.data.status === 'success' && response.data.data) {
+          // New structured format: extract the actual data
+          console.log('Using structured response format');
+          setProgressStatus('Simulation completed successfully!');
+          setResult({...response.data.data});
+        } else if (response.data.status === 'error') {
+          // Handle backend error response
+          const errorMessage = response.data.message || 'Simulation failed';
+          console.error('Backend error:', errorMessage);
+          setError(`Simulation failed: ${errorMessage}`);
+          setProgressStatus('');
+          return;
+        } else if (response.data.agents || response.data.decisions) {
+          // Legacy format: use response data directly
+          console.log('Using legacy response format');
+          setProgressStatus('Simulation completed successfully!');
+          setResult({...response.data});
+        } else {
+          setError('Received unexpected response format from server');
+          setProgressStatus('');
+          return;
+        }
+        
         // Switch to the summary tab to show results
         setTab(0);
       } else {
         setError('Received empty response from server');
+        setProgressStatus('');
       }
     } catch (err) {
       console.error('Error during API call:', err);
@@ -207,11 +293,13 @@ export default function HedgeFundDashboard() {
         });
         setError('Using demonstration data: No high-confidence signals were detected in actual data');
         setTab(0); // Switch to the results tab
+        setProgressStatus('');
       } else {
         setError(errorMessage);
       }
     } finally {
       setLoading(false);
+      setProgressStatus('');
     }
   };
 
@@ -251,6 +339,7 @@ export default function HedgeFundDashboard() {
       </Grid>
       <Divider sx={{ my: 3 }} />
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {loading && <Alert severity="info" sx={{ mb: 3 }}>{progressStatus}</Alert>}
       {result && (
         <Box>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
@@ -448,7 +537,7 @@ export default function HedgeFundDashboard() {
                                   '& .MuiChip-label': { px: 2 },
                                   animation: 'pulse 2s infinite',
                                   '@keyframes pulse': {
-                                    '0%': { boxShadow: '0 0 0 0 rgba(76, 175, 80, 0.4)' },
+                                    '0%': { boxShadow: '0 0 0 rgba(76, 175, 80, 0.4)' },
                                     '70%': { boxShadow: '0 0 0 6px rgba(76, 175, 80, 0)' },
                                     '100%': { boxShadow: '0 0 0 0 rgba(76, 175, 80, 0)' }
                                   }

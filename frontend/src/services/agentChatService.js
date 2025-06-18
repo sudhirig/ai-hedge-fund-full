@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api';
 
 // This service will handle communication with the backend for agent chat
 const agentChatService = {
@@ -6,7 +7,7 @@ const agentChatService = {
   sendMessage: async (agentName, message, chatHistory) => {
     try {
       // Use the actual backend API
-      const response = await axios.post('/api/agent-chat', {
+      const response = await axios.post(API_ENDPOINTS.AGENT_CHAT, {
         agent_name: agentName,
         message: message,
         chat_history: chatHistory

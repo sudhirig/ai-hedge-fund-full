@@ -42,6 +42,7 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import axios from 'axios';
 import AgentAvatar from './AgentAvatars';
+import { API_ENDPOINTS, checkBackendHealth } from '../config/api';
 
 // Default values for the form
 const DEFAULT_TICKERS = "AAPL,MSFT";
@@ -123,8 +124,7 @@ function BacktestDashboard() {
       });
       
       // Use the local backend server with API_BASE_URL
-      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-      const apiUrl = `${API_BASE_URL}/api/backtest`;
+      const apiUrl = API_ENDPOINTS.BACKTEST;
       console.log('Using API URL:', apiUrl);
       
       // Ensure tickers are sent as a comma-separated string as expected by the backend
@@ -158,11 +158,11 @@ function BacktestDashboard() {
     } catch (err) {
       console.error('Error during backtest API call:', err);
       if (err.message === 'Network Error') {
-        setError(`Network Error: Cannot connect to the backend server. Please ensure the backend is running at http://localhost:8000. Details: ${err.message}`);
+        setError(`Network Error: Cannot connect to the backend server. Please ensure the backend is running at ${API_ENDPOINTS.BASE_URL}. Details: ${err.message}`);
         // Try a test request to the backend to check if it's responding
         try {
-          await fetch('http://localhost:8000/docs');
-          console.log('Backend is accessible at /docs endpoint');
+          await checkBackendHealth();
+          console.log('Backend is accessible');
           setError('Backend server is reachable but the specific backtesting endpoint may have an issue. Please try again.');
         } catch (testErr) {
           console.error('Backend server test request failed:', testErr);
