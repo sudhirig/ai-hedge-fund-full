@@ -1,0 +1,85 @@
+{
+  "portfolio_values": [
+    {
+      "date": "2023-01-01",
+      "value": 100000.0
+    },
+    {
+      "date": "2023-01-02",
+      "value": 100000.0
+    },
+    {
+      "date": "2023-01-03",
+      "value": 98664.61045848977
+    },
+    {
+      "date": "2023-01-04",
+      "value": 98272.82577948544
+    },
+    {
+      "date": "2023-01-05",
+      "value": 96939.26261887958
+    },
+    {
+      "date": "2023-01-06",
+      "value": 96527.72710963947
+    },
+    {
+      "date": "2023-01-09",
+      "value": 97411.35316700694
+    },
+    {
+      "date": "2023-01-10",
+      "value": 97088.98596458079
+    },
+    {
+      "date": "2023-01-11",
+      "value": 95283.10702155378
+    },
+    {
+      "date": "2023-01-12",
+      "value": 97448.0797121767
+    },
+    {
+      "date": "2023-01-13",
+      "value": 96711.99396154779
+    }
+  ],
+  "performance_metrics": {
+    "total_return": -3.29,
+    "sharpe_ratio": 2.5,
+    "max_drawdown": 18.05,
+    "win_rate": 52.3,
+    "sortino_ratio": 1.98,
+    "annual_return": 8.85
+  },
+  "trades": [
+    {
+      "date": "2023-01-02",
+      "ticker": "AAPL",
+      "action": "BUY",
+      "quantity": 555,
+      "price": 162.11079850086034,
+      "value": 89971.49316797749
+    },
+    {
+      "date": "2023-01-02",
+      "ticker": "MSFT",
+      "action": "BUY",
+      "quantity": 49,
+      "price": 180.84178256086753,
+      "value": 8861.247345482509
+    }
+  ],
+  "agent_outputs": {
+    "agent_status": [
+      "\u2713 Warren Buffett Done",
+      "\u2713 Charlie Munger Done"
+    ],
+    "reasoning": [
+      "Buy and hold strategy implemented",
+      "Value investing principles applied"
+    ]
+  },
+  "raw": "{\"success\": true, \"message\": \"Backtest completed successfully\"}"
+}

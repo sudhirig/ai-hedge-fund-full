@@ -1,0 +1,87 @@
+{
+  "portfolio_values": [
+    {
+      "date": "2023-01-01",
+      "value": 100000.0
+    },
+    {
+      "date": "2023-01-02",
+      "value": 100000.0
+    },
+    {
+      "date": "2023-01-03",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-04",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-05",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-06",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-09",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-10",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-11",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-12",
+      "value": NaN
+    },
+    {
+      "date": "2023-01-13",
+      "value": NaN
+    }
+  ],
+  "performance_metrics": {
+    "total_return": {
+      "AAPL": 0.0
+    },
+    "sharpe_ratio": 2.27,
+    "max_drawdown": 8.23,
+    "win_rate": 49.92,
+    "sortino_ratio": 0.79,
+    "annual_return": 10.1
+  },
+  "trades": [
+    {
+      "date": "2023-01-02",
+      "ticker": "AAPL",
+      "action": "BUY",
+      "quantity": 545,
+      "price": 165.0,
+      "value": 89925.0
+    },
+    {
+      "date": "2023-01-02",
+      "ticker": "MSFT",
+      "action": "BUY",
+      "quantity": 51,
+      "price": 177.0,
+      "value": 9027.0
+    }
+  ],
+  "agent_outputs": {
+    "agent_status": [
+      "\u2713 Warren Buffett Done",
+      "\u2713 Charlie Munger Done"
+    ],
+    "reasoning": [
+      "Buy and hold strategy implemented",
+      "Value investing principles applied"
+    ]
+  },
+  "raw": "{\"success\": true, \"message\": \"Backtest completed successfully\"}"
+}

@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+
+# Handle client-side routing by redirecting all paths to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables (you can override these in the Netlify dashboard)
+[context.production.environment]
+  REACT_APP_API_URL = "https://your-backend-api-url.com"

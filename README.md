@@ -128,6 +128,25 @@ You can optionally specify the start and end dates to backtest over a specific t
 poetry run python src/backtester.py --ticker AAPL,MSFT,NVDA --start-date 2024-01-01 --end-date 2024-03-01
 ```
 
+## Deploying to Replit
+
+This project can be deployed to Replit for easy sharing and collaboration. Follow these steps:
+
+1. Create a new Replit project
+2. Import your code from GitHub or upload the files directly
+3. Replit will automatically detect the configuration from the `.replit` and `replit.nix` files
+4. Click the "Run" button to start both the backend and frontend servers
+5. The application will be available at your Replit URL
+
+The application uses the following configuration for Replit:
+- Backend: Python FastAPI running on port 8000
+- Frontend: React app running on port 3000
+- The `run.sh` script coordinates starting both services
+
+### Replit Environment Variables
+
+If you need to configure API keys or other sensitive information, add them as Replit Secrets in the project settings.
+
 ## Project Structure 
 ```
 ai-hedge-fund/

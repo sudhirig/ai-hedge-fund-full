@@ -1,0 +1,36 @@
+run = "bash run.sh"
+entrypoint = "run.sh"
+
+[env]
+PYTHONPATH = "${PYTHONPATH}:${HOME}/backend:${HOME}/src"
+PORT = "3000"
+BACKEND_PORT = "8000"
+NODE_OPTIONS = "--openssl-legacy-provider"
+
+[nix]
+channel = "stable-22_11"
+
+[packager]
+language = "nodejs"
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[languages]
+
+[languages.javascript]
+pattern = "**/{*.js,*.jsx,*.ts,*.tsx}"
+
+[languages.javascript.languageServer]
+start = "typescript-language-server --stdio"
+
+[languages.python]
+pattern = "**/*.py"
+
+[languages.python.languageServer]
+start = "pylsp"
+
+[deployment]
+run = ["sh", "-c", "bash run.sh"]
+deploymentTarget = "cloudrun"

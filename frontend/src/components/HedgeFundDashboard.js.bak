@@ -1,0 +1,268 @@
+import React, { useState } from "react";
+import { Grid, Paper, Typography, Button, TextField, Chip, Divider, CircularProgress, Box, Tabs, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Card, Collapse, Alert, IconButton, LinearProgress } from "@mui/material";
+import CloseIcon from '@mui/icons-material/Close';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import axios from "axios";
+import RawOutputVisualizer from "./RawOutputVisualizer";
+import AgentAvatar from "./AgentAvatars";
+import AgentCharts from "./AgentCharts";
+import AgentAlerts from "./AgentAlerts";
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
+
+const DEFAULT_TICKERS = "AAPL,MSFT";
+const DEFAULT_START_DATE = "2024-01-01";
+const DEFAULT_END_DATE = "2024-04-30";
+const DEFAULT_CASH = 100000;
+
+const SIGNAL_COLORS = {
+  bullish: 'success',
+  bearish: 'error',
+  neutral: 'default',
+};
+
+export default function HedgeFundDashboard() {
+  // --- State for Agents tab ---
+  const [openAgentsBanner, setOpenAgentsBanner] = useState(true);
+  const [expandedAgent, setExpandedAgent] = useState(null);
+
+  // --- Utility: specialties for each agent ---
+  function getAgentSpecialties(agent) {
+    switch (agent) {
+      case 'Fundamental Analysis Agent': return ['Value', 'Fundamental'];
+      case 'Technical Analyst': return ['Technical', 'Momentum'];
+      case 'Valuation Analysis Agent': return ['Valuation', 'DCF'];
+      case 'Sentiment Analysis Agent': return ['Sentiment'];
+      case 'Ben Graham Agent': return ['Value'];
+      case 'Cathie Wood Agent': return ['Growth', 'Innovation'];
+      case 'Bill Ackman Agent': return ['Activist', 'Quality'];
+      case 'Phil Fisher Agent': return ['Growth'];
+      case 'Warren Buffett Agent': return ['Value', 'Quality'];
+      case 'Charlie Munger Agent': return ['Quality', 'Value'];
+      case 'Stanley Druckenmiller Agent': return ['Macro', 'Growth'];
+      case 'Risk Management Agent': return ['Risk'];
+      case 'Portfolio Management Agent': return ['Portfolio'];
+      default: return [];
+    }
+  }
+  // --- Utility: dummy agent timeline ---
+  function getAgentTimeline(agent, data) {
+    // You can customize this logic to show real or sample steps for each agent
+    if (!data || typeof data !== 'object') return [];
+    const tickers = Object.keys(data);
+    if (tickers.length === 0) return [];
+    return [
+      `Analyzed ${tickers[0]}`,
+      data[tickers[0]]?.signal ? `Issued ${data[tickers[0]].signal.toUpperCase()} signal` : 'No signal issued',
+      'Contributed to portfolio decision'
+    ];
+  }
+  const [tickers, setTickers] = useState(DEFAULT_TICKERS);
+  const [startDate, setStartDate] = useState(DEFAULT_START_DATE);
+  const [endDate, setEndDate] = useState(DEFAULT_END_DATE);
+  const [initialCash, setInitialCash] = useState(DEFAULT_CASH);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState(0);
+
+  const handleRun = async () => {
+    setLoading(true);
+    setResult(null);
+    setError(null);
+    try {
+      const response = await axios.post("/api/run", {
+        tickers,
+        start_date: startDate,
+        end_date: endDate,
+        initial_cash: initialCash,
+      });
+      setResult(response.data);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Paper elevation={2} sx={{ p: 4 }}>
+      <Typography variant="h5" fontWeight={600} gutterBottom>
+        Run a Multi-Agent Hedge Fund Simulation
+      </Typography>
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12} sm={6} md={3}>
+          <TextField label="Tickers" value={tickers} onChange={e => setTickers(e.target.value)} fullWidth helperText="Comma-separated (e.g., AAPL,MSFT)" />
+        </Grid>
+        <Grid item xs={12} sm={6} md={2}>
+          <TextField label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} fullWidth InputLabelProps={{ shrink: true }} />
+        </Grid>
+        <Grid item xs={12} sm={6} md={2}>
+          <TextField label="End Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} fullWidth InputLabelProps={{ shrink: true }} />
+        </Grid>
+        <Grid item xs={12} sm={6} md={2}>
+          <TextField label="Initial Cash ($)" type="number" value={initialCash} onChange={e => setInitialCash(Number(e.target.value))} fullWidth />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Button variant="contained" color="primary" onClick={handleRun} fullWidth disabled={loading} size="large">
+            {loading ? <CircularProgress size={24} /> : "Run Simulation"}
+          </Button>
+        </Grid>
+      </Grid>
+      <Divider sx={{ my: 3 }} />
+      {error && <Typography color="error">{error}</Typography>}
+      {result && (
+        <Box>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+            <Tab label="Summary" />
+            <Tab label="Agents" />
+            <Tab label="Raw Output" />
+          </Tabs>
+          {tab === 0 && (
+            <Box>
+              {result.agents && <AgentAlerts agents={result.agents} />}
+              {result.agents && <AgentCharts agents={result.agents} />}
+              {result.agents && <AgentSummary agents={result.agents} />}
+              {result.decisions && (
+                <Box>
+                  <Typography variant="h6" fontWeight={600} sx={{ mt: 2 }}>
+                    Trading Decisions
+                  </Typography>
+                  <TableContainer component={Paper} sx={{ mt: 2 }}>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Ticker</TableCell>
+                          <TableCell>Action</TableCell>
+                          <TableCell>Quantity</TableCell>
+                          <TableCell>Confidence</TableCell>
+                          <TableCell>Reasoning</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {Object.entries(result.decisions).map(([ticker, d]) => (
+                          <TableRow key={ticker}>
+                            <TableCell>{ticker}</TableCell>
+                            <TableCell><Chip label={d.action} color={SIGNAL_COLORS[d.action?.toLowerCase()] || 'default'} /></TableCell>
+                            <TableCell>{d.quantity}</TableCell>
+                            <TableCell>{d.confidence}%</TableCell>
+                            <TableCell sx={{ maxWidth: 300, whiteSpace: 'pre-line' }}>{d.reasoning}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+            </Box>
+          )}
+          {tab === 1 && result.agents && (
+            <Box>
+              {/* Intro Banner */}
+              <Collapse in={openAgentsBanner}>
+                <Alert
+                  icon={<CloseIcon fontSize="inherit" />} severity="info"
+                  action={<IconButton size="small" onClick={() => setOpenAgentsBanner(false)}><CloseIcon fontSize="small" /></IconButton>}
+                  sx={{ mb: 2 }}
+                >
+                  Meet your AI-powered investment team! Click on any agent to explore its unique strategy, reasoning, and recent actions.
+                </Alert>
+              </Collapse>
+                        p: 2,
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': { transform: 'translateY(-4px) scale(1.03)', boxShadow: 8 },
+                        cursor: 'pointer',
+                        minHeight: 320,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between'
+                      }}
+                      onClick={() => setExpandedAgent(agent === expandedAgent ? null : agent)}
+                      raised={expandedAgent === agent}
+                    >
+                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                        <AgentAvatar agent={agent} />
+                        <Typography fontWeight={700} variant="h6">{agent}</Typography>
+                        <Chip label="AI-Driven" color="primary" size="small" />
+                      </Stack>
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                        {/* Specialty tags (example: Value, Growth, Risk, Sentiment) */}
+                        {getAgentSpecialties(agent).map(tag => (
+                          <Chip key={tag} label={tag} size="small" color="info" variant="outlined" />
+                        ))}
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1, minHeight: 36 }}>{AGENT_LABELS[agent] || ''}</Typography>
+                      {/* Confidence/uncertainty bar (if available) */}
+                      {typeof data === 'object' && Object.values(data)[0]?.confidence !== undefined && (
+                        <Box sx={{ width: '100%', mb: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Confidence</Typography>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Object.values(data)[0].confidence}
+                            sx={{ height: 8, borderRadius: 4, background: '#e3e3e3', '& .MuiLinearProgress-bar': { backgroundColor: '#1976d2' } }}
+                          />
+                        </Box>
+                      )}
+                      {/* Expandable section: reasoning, timeline, see in action */}
+                      <Collapse in={expandedAgent === agent}>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Reasoning Sample</Typography>
+                        {typeof data === 'object' && Object.values(data)[0]?.reasoning ?
+                          (typeof Object.values(data)[0].reasoning === 'string' ? (
+                            <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mb: 1 }}>{Object.values(data)[0].reasoning}</Typography>
+                          ) : (
+                            <Box component="pre" sx={{ background: '#f3f3f3', p: 1, borderRadius: 1, overflowX: 'auto', fontSize: 14, mb: 1 }}>
+                              <code>{JSON.stringify(Object.values(data)[0].reasoning, null, 2)}</code>
+                            </Box>
+                          ))
+                          : (<Typography variant="body2" sx={{ mb: 1 }}>No reasoning available.</Typography>)}
+                        {/* Mini Timeline of Actions */}
+                        <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Recent Agent Actions</Typography>
+                        <Stepper activeStep={1} orientation="vertical" sx={{ mb: 1 }}>
+                          {getAgentTimeline(agent, data).map((step, idx) => (
+                            <Step key={idx} completed={idx < getAgentTimeline(agent, data).length - 1}>
+                              <StepLabel>{step}</StepLabel>
+                            </Step>
+                          ))}
+                        </Stepper>
+                        {/* See in Action Button */}
+                        <Button variant="contained" color="primary" size="small" startIcon={<VisibilityIcon />} sx={{ mt: 1 }} disabled>
+                          See in Action (Summary)
+                        </Button>
+                      </Collapse>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+          {tab === 2 && (
+            <Box sx={{ mt: 2 }}>
+              <RawOutputVisualizer raw={result.raw || result.output || ""} />
+            </Box>
+          )}
+        </Box>
+      )}
+    </Paper>
+  );
+}
+            Meet your AI-powered investment team! Click on any agent to explore its unique strategy, reasoning, and recent actions.
+          </Alert>
+        </Collapse>
+
+        {/* Agent Comparison & Leaderboard Placeholders */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Button variant="outlined" color="primary" startIcon={<CompareArrowsIcon />} disabled>Compare Agents (Coming Soon)</Button>
+          <Button variant="outlined" color="secondary" startIcon={<EmojiEventsIcon />} disabled>Agent Leaderboard (Coming Soon)</Button>
+        </Box>
+
+        {/* Responsive Agent Gallery */}
+        <Grid container spacing={3}>
+          {Object.entries(result.agents).map(([agent, data]) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={agent}>
