@@ -37,6 +37,40 @@ This project is for **educational and research purposes only**.
 
 By using this software, you agree to use it solely for learning purposes.
 
+---
+
+## 🚦 How to Start Backend and Frontend (Local Development)
+
+**Quick Start (Recommended for Most Users):**
+
+1. **Install all dependencies first:**
+   - Backend: `cd backend && poetry install`
+   - Frontend: `cd frontend && npm install`
+2. **Unified Startup:**
+   - From the project root: `./run.sh`
+   - This will launch both backend (FastAPI) and frontend (React) with monitoring/restart logic.
+3. **Manual Startup (if you want to run separately):**
+   - **Backend:**
+     ```bash
+     cd backend
+     poetry install
+     poetry run uvicorn api:app --host 0.0.0.0 --port 8000
+     ```
+   - **Frontend:**
+     ```bash
+     cd frontend
+     npm install
+     npm start
+     ```
+
+**Troubleshooting:**
+- If backend fails to start, run `poetry lock` then `poetry install` inside `backend/` to fix dependency mismatches.
+- If `uvicorn` is not found, ensure you are using Poetry (`poetry run uvicorn ...`), or check your Python environment.
+- Health check: [http://localhost:8000/health](http://localhost:8000/health)
+- Frontend: [http://localhost:3000](http://localhost:3000)
+
+---
+
 ## Table of Contents
 - [Setup](#setup)
 - [Usage](#usage)

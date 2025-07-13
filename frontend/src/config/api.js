@@ -15,46 +15,52 @@ const getApiBaseUrl = () => {
   const protocol = window.location.protocol;
   const port = window.location.port;
   
-  console.log('Detecting platform from hostname:', hostname);
+  console.log('🔍 API Detection Debug:', {
+    hostname,
+    protocol,
+    port,
+    fullUrl: window.location.href
+  });
   
   // Replit detection
   if (hostname.includes('replit') || hostname.includes('repl.co')) {
     const replitBackendUrl = `${protocol}//${hostname.replace(/:(3000|8080)/, ':8000')}`;
-    console.log('Detected Replit, using backend URL:', replitBackendUrl);
+    console.log('✅ Detected Replit, using backend URL:', replitBackendUrl);
     return replitBackendUrl;
   }
   
   // Railway detection
   if (hostname.includes('railway.app')) {
     const railwayUrl = `${protocol}//${hostname}`;
-    console.log('Detected Railway, using URL:', railwayUrl);
+    console.log('✅ Detected Railway, using URL:', railwayUrl);
     return railwayUrl;
   }
   
   // Render detection
   if (hostname.includes('onrender.com')) {
     const renderUrl = process.env.REACT_APP_BACKEND_URL || `${protocol}//${hostname}`;
-    console.log('Detected Render, using URL:', renderUrl);
+    console.log('✅ Detected Render, using URL:', renderUrl);
     return renderUrl;
   }
   
   // Vercel detection
   if (hostname.includes('vercel.app')) {
     const vercelBackendUrl = process.env.REACT_APP_BACKEND_URL || 'https://your-backend.onrender.com';
-    console.log('Detected Vercel, using external backend URL:', vercelBackendUrl);
+    console.log('✅ Detected Vercel, using external backend URL:', vercelBackendUrl);
     return vercelBackendUrl;
   }
   
   // Netlify detection
   if (hostname.includes('netlify.app') || hostname.includes('windsurf.build')) {
     const netlifyBackendUrl = process.env.REACT_APP_BACKEND_URL || 'https://your-backend.onrender.com';
-    console.log('Detected Netlify, using external backend URL:', netlifyBackendUrl);
+    console.log('✅ Detected Netlify, using external backend URL:', netlifyBackendUrl);
     return netlifyBackendUrl;
   }
   
   // 3. Local development (last resort)
   const localUrl = 'http://localhost:8000';
-  console.log('Using local development URL:', localUrl);
+  console.log('🏠 Using local development URL:', localUrl);
+  console.log('💡 If this fails, make sure backend is running on port 8000');
   return localUrl;
 };
 

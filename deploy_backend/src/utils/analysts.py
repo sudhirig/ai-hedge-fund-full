@@ -1,11 +1,15 @@
 """Constants and utilities related to analysts configuration."""
 
+from agents.aswath_damodaran import aswath_damodaran_agent
 from agents.ben_graham import ben_graham_agent
 from agents.bill_ackman import bill_ackman_agent
 from agents.cathie_wood import cathie_wood_agent
 from agents.charlie_munger import charlie_munger_agent
 from agents.fundamentals import fundamentals_agent
+from agents.michael_burry import michael_burry_agent
+from agents.peter_lynch import peter_lynch_agent
 from agents.phil_fisher import phil_fisher_agent
+from agents.rakesh_jhunjhunwala import rakesh_jhunjhunwala_agent
 from agents.sentiment import sentiment_agent
 from agents.stanley_druckenmiller import stanley_druckenmiller_agent
 from agents.technicals import technical_analyst_agent
@@ -68,6 +72,26 @@ ANALYST_CONFIG = {
         "display_name": "Valuation Analyst",
         "agent_func": valuation_agent,
         "order": 10,
+    },
+    "aswath_damodaran": {
+        "display_name": "Aswath Damodaran",
+        "agent_func": aswath_damodaran_agent,
+        "order": 11,
+    },
+    "michael_burry": {
+        "display_name": "Michael Burry",
+        "agent_func": michael_burry_agent,
+        "order": 12,
+    },
+    "peter_lynch": {
+        "display_name": "Peter Lynch",
+        "agent_func": peter_lynch_agent,
+        "order": 13,
+    },
+    "rakesh_jhunjhunwala": {
+        "display_name": "Rakesh Jhunjhunwala",
+        "agent_func": rakesh_jhunjhunwala_agent,
+        "order": 14,
     },
 }
 

@@ -2,11 +2,9 @@ module.exports = {
   apps: [
     {
       name: 'hedge-fund-backend',
-      cwd: './backend',
-      script: 'uvicorn',
-      args: 'api:app --host 0.0.0.0 --port 8000',
-      interpreter: 'python3',
-      interpreter_args: '-m',
+      cwd: './',
+      script: 'sh',
+      args: '-c "cd backend && poetry run uvicorn api:app --host 0.0.0.0 --port 8000"',
       instances: 1,
       autorestart: true,
       watch: false,
@@ -14,14 +12,14 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       },
-      env_file: '../.env',
-      error_file: '../logs/backend-error.log',
-      out_file: '../logs/backend-out.log',
-      log_file: '../logs/backend-combined.log',
+      error_file: './logs/backend-error.log',
+      out_file: './logs/backend-out.log',
+      log_file: './logs/backend-combined.log',
       time: true,
-      restart_delay: 3000,
-      max_restarts: 10,
-      min_uptime: '10s'
+      restart_delay: 5000,
+      max_restarts: 5,
+      min_uptime: '15s',
+      kill_timeout: 5000
     },
     {
       name: 'hedge-fund-frontend',

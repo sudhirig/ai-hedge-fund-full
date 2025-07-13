@@ -91,7 +91,7 @@ install_dependencies() {
     echo -e "${BLUE}📦 Installing Python dependencies...${NC}"
     if command -v poetry &> /dev/null; then
         echo -e "${GREEN}Using Poetry for dependency management...${NC}"
-        poetry install --no-dev
+        poetry install --only=main
     else
         echo -e "${YELLOW}Poetry not found, using pip...${NC}"
         if [ -f "requirements.txt" ]; then
@@ -140,31 +140,73 @@ start_backend() {
     while [ $attempt -le $MAX_RETRIES ]; do
         echo -e "${BLUE}🔧 Starting backend (attempt $attempt/$MAX_RETRIES)...${NC}"
         
-        # Start backend in background
-        cd backend
-        source ../.env
-        nohup uvicorn api:app --host 0.0.0.0 --port $BACKEND_PORT > ../backend.log 2>&1 &
-        local backend_pid=$!
-        cd ..
+        # Clean up any previous attempts
+        pkill -f "uvicorn.*api:app" 2>/dev/null || true
+        sleep 2
         
-        # Wait and check if it started successfully
-        sleep 5
-        
-        if kill -0 $backend_pid 2>/dev/null && check_port $BACKEND_PORT; then
-            if check_backend_health; then
-                echo -e "${GREEN}✅ Backend started successfully (PID: $backend_pid)${NC}"
-                echo $backend_pid > backend.pid
-                return 0
-            fi
+        # Validate backend directory and api.py exists
+        if [ ! -f "backend/api.py" ]; then
+            echo -e "${RED}❌ backend/api.py not found${NC}"
+            return 1
         fi
         
-        echo -e "${RED}❌ Backend start failed, retrying in 5s...${NC}"
-        kill $backend_pid 2>/dev/null || true
+        # Start backend with Poetry from project root for proper module resolution
+        echo -e "${YELLOW}📡 Starting backend with Poetry...${NC}"
+        nohup poetry run python -m uvicorn backend.api:app --host 0.0.0.0 --port $BACKEND_PORT --reload > backend.log 2>&1 &
+        local backend_pid=$!
+        echo $backend_pid > backend.pid
+        
+        # Progressive health checking with detailed error capture
+        echo -e "${YELLOW}⏳ Waiting for backend initialization...${NC}"
+        sleep 3
+        
+        # Check if process is still running
+        if ! kill -0 $backend_pid 2>/dev/null; then
+            echo -e "${RED}❌ Backend process died immediately${NC}"
+            echo -e "${YELLOW}📋 Last 10 lines of backend.log:${NC}"
+            tail -10 backend.log 2>/dev/null || echo "No log output"
+            ((attempt++))
+            continue
+        fi
+        
+        # Check if port is listening
+        local port_check_attempts=0
+        while [ $port_check_attempts -lt 10 ]; do
+            if check_port $BACKEND_PORT; then
+                break
+            fi
+            sleep 1
+            ((port_check_attempts++))
+        done
+        
+        if [ $port_check_attempts -eq 10 ]; then
+            echo -e "${RED}❌ Backend port $BACKEND_PORT not responding${NC}"
+            echo -e "${YELLOW}📋 Backend log:${NC}"
+            tail -10 backend.log 2>/dev/null || echo "No log output"
+            kill $backend_pid 2>/dev/null || true
+            ((attempt++))
+            continue
+        fi
+        
+        # Final health check with detailed error reporting
+        if check_backend_health; then
+            echo -e "${GREEN}✅ Backend started successfully (PID: $backend_pid, Port: $BACKEND_PORT)${NC}"
+            return 0
+        else
+            echo -e "${RED}❌ Backend health check failed${NC}"
+            echo -e "${YELLOW}📋 Backend log:${NC}"
+            tail -10 backend.log 2>/dev/null || echo "No log output"
+            kill $backend_pid 2>/dev/null || true
+        fi
+        
+        echo -e "${RED}❌ Backend start failed (attempt $attempt/$MAX_RETRIES), retrying in 5s...${NC}"
         sleep 5
         ((attempt++))
     done
     
     echo -e "${RED}❌ Failed to start backend after $MAX_RETRIES attempts${NC}"
+    echo -e "${YELLOW}📋 Final backend log:${NC}"
+    tail -20 backend.log 2>/dev/null || echo "No log output available"
     return 1
 }
 

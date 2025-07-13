@@ -14,6 +14,10 @@ import SecurityIcon from '@mui/icons-material/Security'; // Munger
 import PublicIcon from '@mui/icons-material/Public'; // Druckenmiller
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'; // Risk
 import GroupWorkIcon from '@mui/icons-material/GroupWork'; // Portfolio
+import SchoolIcon from '@mui/icons-material/School'; // Aswath Damodaran
+import RemoveRedEyeIcon from '@mui/icons-material/RemoveRedEye'; // Michael Burry
+import SearchIcon from '@mui/icons-material/Search'; // Peter Lynch
+import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee'; // Rakesh Jhunjhunwala
 
 export const agentAvatarMap = {
   "Fundamental Analysis Agent": <EmojiObjectsIcon color="primary" />,
@@ -28,7 +32,11 @@ export const agentAvatarMap = {
   "Charlie Munger Agent": <SecurityIcon color="info" />,
   "Stanley Druckenmiller Agent": <PublicIcon color="secondary" />,
   "Risk Management Agent": <WarningAmberIcon color="error" />,
-  "Portfolio Management Agent": <GroupWorkIcon color="primary" />
+  "Portfolio Management Agent": <GroupWorkIcon color="primary" />,
+  "Aswath Damodaran": <SchoolIcon color="info" />,
+  "Michael Burry": <RemoveRedEyeIcon color="warning" />,
+  "Peter Lynch": <SearchIcon color="success" />,
+  "Rakesh Jhunjhunwala": <CurrencyRupeeIcon color="secondary" />
 };
 
 export default function AgentAvatar({ agent }) {

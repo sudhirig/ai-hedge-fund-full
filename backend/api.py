@@ -9,6 +9,10 @@ import time
 import re
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Environment validation
 def validate_environment():
@@ -55,11 +59,65 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Agent Configuration Models
+class AgentConfig(BaseModel):
+    """Global agent configuration parameters"""
+    confidence_threshold: Optional[float] = 0.6
+    analysis_depth: Optional[int] = 5
+    risk_tolerance: Optional[str] = "moderate"  # conservative, moderate, aggressive
+    time_horizon: Optional[int] = 30  # days
+    
+class AgentWeights(BaseModel):
+    """Weights for different analysis components"""
+    technical: Optional[float] = 0.3
+    fundamental: Optional[float] = 0.4
+    sentiment: Optional[float] = 0.3
+    valuation: Optional[float] = 0.0  # Auto-calculated if not provided
+    
+class TechnicalConfig(BaseModel):
+    """Technical analysis specific configuration"""
+    lookback_period: Optional[int] = 20
+    rsi_period: Optional[int] = 14
+    ma_short: Optional[int] = 20
+    ma_long: Optional[int] = 50
+    volume_threshold: Optional[float] = 1.5
+    trend_weight: Optional[float] = 0.4
+    momentum_weight: Optional[float] = 0.3
+    volume_weight: Optional[float] = 0.3
+    
+class RiskConfig(BaseModel):
+    """Risk management specific configuration"""
+    max_position_size: Optional[float] = 0.1  # 10% of portfolio
+    stop_loss_threshold: Optional[float] = 0.05  # 5%
+    volatility_lookback: Optional[int] = 30
+    correlation_threshold: Optional[float] = 0.7
+    
+class SentimentConfig(BaseModel):
+    """Sentiment analysis specific configuration"""
+    news_weight: Optional[float] = 0.6
+    insider_weight: Optional[float] = 0.4
+    sentiment_threshold: Optional[float] = 0.1
+    news_lookback_days: Optional[int] = 7
+    
+class AgentSpecificConfig(BaseModel):
+    """Agent-specific configuration parameters"""
+    technical: Optional[TechnicalConfig] = None
+    risk: Optional[RiskConfig] = None
+    sentiment: Optional[SentimentConfig] = None
+    
+class FullAgentConfig(BaseModel):
+    """Complete agent configuration structure"""
+    global_config: Optional[AgentConfig] = None
+    weights: Optional[AgentWeights] = None
+    agent_specific: Optional[AgentSpecificConfig] = None
+    enabled_agents: Optional[List[str]] = None
+
 class RunRequest(BaseModel):
     tickers: str
     start_date: str
     end_date: str
     initial_cash: int
+    agent_config: Optional[FullAgentConfig] = None
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'assistant'
@@ -176,47 +234,54 @@ async def run_simulation(req: RunRequest):
             
             print(f"✅ Simulation completed successfully. Output length: {len(output)} chars")
             
-            # Parse agent blocks: e.g. '==========  Fundamental Analysis Agent  ==========' ... {json} ... '================================================'
-            agent_blocks = re.findall(r'=+\s+([\w\s]+Agent[\w\s]*)=+\n(\{[\s\S]+?\})\n=+', output)
+            # Parse new format agent debug logs: e.g. '🔍 LLM DEBUG - Agent: peter_lynch_agent, Attempt: 1' followed by result
+            # Pattern to match agent debug entries
+            agent_pattern = r'🔍 LLM DEBUG - Agent: ([\w_]+), Attempt: \d+[\s\S]*?📄 Raw Result: signal=\'([^\']*)\' confidence=([\d.]+) reasoning=(["\'][\s\S]*?)(?=🔍|✅|$)'
+            agent_matches = re.findall(agent_pattern, output)
+            
             agents = {}
-            for name, block in agent_blocks:
-                agent_name = name.strip()
-                try:
-                    parsed = json.loads(block)
-                    # Special handling for Risk Management Agent: fill missing fields with defaults
-                    if agent_name == "Risk Management Agent":
-                        for ticker in (parsed.keys() if isinstance(parsed, dict) else []):
-                            v = parsed[ticker]
-                            if isinstance(v, dict):
-                                for key in ["portfolio_value", "current_position", "position_limit", "remaining_limit", "available_cash"]:
-                                    if key not in v.get("reasoning", {}):
-                                        if "reasoning" not in v:
-                                            v["reasoning"] = {}
-                                        v["reasoning"][key] = None
-                    agents[agent_name] = parsed
-                except Exception:
-                    # Fallback: try to parse as a dict of tickers with empty fields
-                    if agent_name == "Risk Management Agent":
-                        tickers = re.findall(r'"([A-Z]+)"\s*:', block)
-                        agents[agent_name] = {t: {"reasoning": {"portfolio_value": None, "current_position": None, "position_limit": None, "remaining_limit": None, "available_cash": None}} for t in tickers}
-                    else:
-                        agents[agent_name] = block
+            tickers = req.tickers.split(',') if ',' in req.tickers else [req.tickers]
+            
+            for agent_name, signal, confidence, reasoning in agent_matches:
+                # Convert agent_name from snake_case to display name
+                display_name = agent_name.replace('_', ' ').title().replace(' Agent', ' Agent')
+                
+                # Clean up reasoning text - remove quotes and escape characters
+                reasoning_text = reasoning.strip('"\'')
+                if reasoning_text.startswith('"') and reasoning_text.endswith('"'):
+                    reasoning_text = reasoning_text[1:-1]
+                
+                # Create agent data structure for each ticker
+                agent_data = {}
+                for ticker in tickers:
+                    agent_data[ticker] = {
+                        "signal": signal,
+                        "confidence": float(confidence),
+                        "reasoning": reasoning_text
+                    }
+                
+                agents[display_name] = agent_data
 
-            # Parse trading decisions: e.g. 'TRADING DECISION: [AAPL]' ... table ...
-            # Loosen the regex to allow for optional blank/comment lines between header and table
-            decision_blocks = re.findall(r'TRADING DECISION: \[(.*?)\][^\S\r\n]*\n(?:[ \t]*\n)*([+\-|\w\s%.$:,\[\]]+)', output)
+            # Parse portfolio manager decisions from debug logs
+            # Pattern: 'Agent: portfolio_management_agent' followed by decisions data
+            portfolio_pattern = r'🔍 LLM DEBUG - Agent: portfolio_management_agent[\s\S]*?📄 Raw Result: decisions=\{([\s\S]*?)\}[\s\S]*?(?=🔍|✅|$)'
+            portfolio_match = re.search(portfolio_pattern, output)
+            
             decisions = {}
-            for ticker, table in decision_blocks:
-                actions = re.findall(r'\|\s*Action\s*\|\s*(\w+)\s*\|', table)
-                qtys = re.findall(r'\|\s*Quantity\s*\|\s*(\d+)\s*\|', table)
-                confs = re.findall(r'\|\s*Confidence\s*\|\s*([\d.]+)%\s*\|', table)
-                reasons = re.findall(r'\|\s*Reasoning\s*\|(.+?)\|', table, re.DOTALL)
-                decisions[ticker] = {
-                    'action': actions[0] if actions else '',
-                    'quantity': int(qtys[0]) if qtys else 0,
-                    'confidence': float(confs[0]) if confs else 0,
-                    'reasoning': reasons[0].strip() if reasons else ''
-                }
+            if portfolio_match:
+                # Parse the portfolio decision data structure
+                decision_text = portfolio_match.group(1)
+                # Extract ticker decisions - look for 'TICKER': PortfolioDecision(...)
+                ticker_pattern = r"'([A-Z]+)':\s*PortfolioDecision\(action='([^']*)',\s*quantity=([\d]+),\s*confidence=([\d.]+),\s*reasoning=\"([^\"]*)\""
+                ticker_matches = re.findall(ticker_pattern, decision_text)
+                
+                for ticker, action, quantity, confidence, reasoning in ticker_matches:
+                    decisions[ticker] = {
+                        'action': action.upper(),  # Convert to uppercase for consistency
+                        'quantity': int(quantity),
+                        'confidence': float(confidence),
+                        'reasoning': reasoning
+                    }
 
             return {
                 "status": "success", 
@@ -382,3 +447,23 @@ async def run_backtest(req: BacktestRequest):
             "agent_outputs": {},
             "raw": ""
         }
+
+# Server startup
+if __name__ == "__main__":
+    import uvicorn
+    
+    # Get port from environment or default to 8000
+    port = int(os.getenv("PORT", "8000"))
+    
+    print(f"🚀 Starting AI Hedge Fund Backend on port {port}")
+    print(f"📊 Health check: http://localhost:{port}/health")
+    print(f"📈 API endpoints available at: http://localhost:{port}/docs")
+    
+    # Start the server
+    uvicorn.run(
+        "api:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,  # Set to True for development
+        log_level="info"
+    )
