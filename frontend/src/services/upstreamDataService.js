@@ -48,25 +48,66 @@ class UpstreamDataService {
     const cacheKey = `analysis-${tickers.join(',')}-${timeframe}`;
     
     return this.getCachedData(cacheKey, async () => {
-      const response = await fetch(`${this.baseURL}/api/run`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      // Create AbortController for timeout handling (like axios)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+      
+      try {
+        console.log('🚀 Professional Dashboard: Starting analysis request...');
+        console.log('Request data:', {
           tickers: tickers.join(','),
           start_date: this.getDateForTimeframe(timeframe, 'start'),
           end_date: this.getDateForTimeframe(timeframe, 'end'),
           initial_cash: 100000
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`API responded with status ${response.status}`);
+        });
+        
+        const response = await fetch(`${this.baseURL}/api/run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tickers: tickers.join(','),
+            start_date: this.getDateForTimeframe(timeframe, 'start'),
+            end_date: this.getDateForTimeframe(timeframe, 'end'),
+            initial_cash: 100000
+          }),
+          signal: controller.signal // Add timeout signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Professional Dashboard API Error:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          });
+          throw new Error(`API responded with status ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ Professional Dashboard: Analysis completed successfully');
+        console.log('Response data structure:', {
+          hasStatus: !!data.status,
+          hasData: !!data.data,
+          hasAgents: !!(data.agents || data.data?.agents),
+          hasDecisions: !!(data.decisions || data.data?.decisions)
+        });
+        
+        return this.transformBackendData(data);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        
+        if (error.name === 'AbortError') {
+          console.error('❌ Professional Dashboard: Analysis timed out after 5 minutes');
+          throw new Error('Analysis timed out. The AI agents are taking longer than expected. Please try again with fewer stocks or a shorter time period.');
+        }
+        
+        console.error('❌ Professional Dashboard: Analysis failed:', error);
+        throw error;
       }
-
-      const data = await response.json();
-      return this.transformBackendData(data);
     });
   }
 

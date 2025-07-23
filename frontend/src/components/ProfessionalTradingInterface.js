@@ -169,7 +169,7 @@ const ProfessionalTradingInterface = () => {
         end_date: endDate,
         initial_cash: initialCash
       }, {
-        timeout: 60000, // 60 second timeout
+        timeout: 300000, // 5 minute timeout (matches backend)
         headers: {
           'Content-Type': 'application/json',
         }
@@ -390,14 +390,60 @@ const ProfessionalTradingInterface = () => {
     switch (selectedSection) {
       case 'dashboard':
         return (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h4" sx={{ color: customTheme.palette.text.primary, mb: 4, fontWeight: 600 }}>
-              Professional Trading Dashboard
-            </Typography>
+          <Box sx={{ 
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Header Section */}
+            <Box sx={{ 
+              px: 4, 
+              py: 3, 
+              borderBottom: `1px solid ${customTheme.palette.divider}`,
+              backgroundColor: customTheme.palette.background.paper,
+              position: 'sticky',
+              top: 0,
+              zIndex: 50
+            }}>
+              <Typography 
+                variant="h3" 
+                sx={{ 
+                  color: customTheme.palette.text.primary, 
+                  fontWeight: 700,
+                  fontSize: { xs: '1.75rem', sm: '2.125rem', md: '2.5rem' },
+                  letterSpacing: '-0.025em',
+                  mb: 1
+                }}
+              >
+                Professional Trading Dashboard
+              </Typography>
+              <Typography 
+                variant="subtitle1" 
+                sx={{ 
+                  color: customTheme.palette.text.secondary,
+                  fontSize: '1.1rem',
+                  fontWeight: 400
+                }}
+              >
+                AI-powered investment analysis and portfolio management
+              </Typography>
+            </Box>
             
-            <StockSelectionPanel />
+            {/* Stock Selection Panel */}
+            <Box sx={{ px: 4, py: 3, backgroundColor: customTheme.palette.background.default }}>
+              <StockSelectionPanel />
+            </Box>
             
-            <Grid container spacing={3}>
+            {/* Dashboard Content */}
+            <Box sx={{ 
+              flex: 1, 
+              px: 4, 
+              py: 2, 
+              overflow: 'auto',
+              backgroundColor: customTheme.palette.background.default
+            }}>
+              <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
                 <ProfessionalPortfolioCard 
                   decisions={analysisResults?.decisions}
@@ -509,6 +555,7 @@ const ProfessionalTradingInterface = () => {
                 </Card>
               </Grid>
             </Grid>
+            </Box>
           </Box>
         );
 
@@ -718,15 +765,31 @@ const ProfessionalTradingInterface = () => {
   ];
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: customTheme.palette.background.default }}>
+    <Box sx={{ 
+      display: 'flex', 
+      minHeight: '100vh', 
+      width: '100vw',
+      backgroundColor: customTheme.palette.background.default,
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      overflow: 'hidden'
+    }}>
       {/* Top App Bar */}
       <AppBar 
         position="fixed" 
         sx={{ 
-          zIndex: (theme) => theme.zIndex.drawer + 1,
+          zIndex: 1300,
           backgroundColor: customTheme.palette.background.paper,
           borderBottom: `1px solid ${customTheme.palette.divider}`,
-          boxShadow: 'none'
+          boxShadow: customTheme.shadows[2],
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '64px',
+          width: '100vw'
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between' }}>
@@ -761,12 +824,18 @@ const ProfessionalTradingInterface = () => {
         sx={{
           width: 280,
           flexShrink: 0,
+          zIndex: 1200,
           '& .MuiDrawer-paper': {
             width: 280,
             boxSizing: 'border-box',
             backgroundColor: customTheme.palette.background.paper,
             borderRight: `1px solid ${customTheme.palette.divider}`,
-            mt: '64px'
+            top: '64px',
+            height: 'calc(100vh - 64px)',
+            position: 'fixed',
+            left: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden'
           },
         }}
       >
@@ -930,22 +999,32 @@ const ProfessionalTradingInterface = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          transition: customTheme.transitions.create('margin', {
+          width: drawerOpen && !isMobile ? 'calc(100vw - 280px)' : '100vw',
+          marginLeft: drawerOpen && !isMobile ? '280px' : '0px',
+          marginTop: '64px',
+          backgroundColor: customTheme.palette.background.default,
+          height: 'calc(100vh - 64px)',
+          overflow: 'auto',
+          position: 'fixed',
+          top: '64px',
+          right: 0,
+          zIndex: 1000,
+          transition: customTheme.transitions.create(['margin-left', 'width'], {
             easing: customTheme.transitions.easing.sharp,
             duration: customTheme.transitions.duration.leavingScreen,
-          }),
-          marginLeft: drawerOpen && !isMobile ? 0 : `-280px`,
-          mt: '64px',
-          backgroundColor: customTheme.palette.background.default,
-          minHeight: 'calc(100vh - 64px)',
-          overflow: 'auto'
+          })
         }}
       >
         {/* Breadcrumbs */}
         <Box sx={{ 
-          p: 2, 
+          px: 3, 
+          py: 2, 
           borderBottom: `1px solid ${customTheme.palette.divider}`,
-          backgroundColor: customTheme.palette.background.paper 
+          backgroundColor: customTheme.palette.background.paper,
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          backdropFilter: 'blur(8px)'
         }}>
           <Breadcrumbs sx={{ color: customTheme.palette.text.secondary }}>
             <Link href="#" sx={{ color: customTheme.palette.primary.main, textDecoration: 'none' }}>
@@ -959,9 +1038,10 @@ const ProfessionalTradingInterface = () => {
 
         {/* Content Area */}
         <Box sx={{ 
-          p: 3, 
+          flex: 1,
           backgroundColor: customTheme.palette.background.default,
-          minHeight: 'calc(100vh - 128px)' 
+          overflow: 'auto',
+          height: 'calc(100% - 64px)' // Account for breadcrumbs
         }}>
           {renderContent()}
         </Box>
@@ -973,6 +1053,10 @@ const ProfessionalTradingInterface = () => {
         autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{
+          zIndex: 1400, // Above AppBar
+          marginTop: '80px' // Below AppBar with some spacing
+        }}
       >
         <Alert 
           onClose={() => setSnackbarOpen(false)} 

@@ -67,45 +67,56 @@ check_port() {
     return 0
 }
 
-# Environment validation
-validate_environment() {
-    log "🔍 Validating environment..."
+# Database schema validation
+validate_database_schema() {
+    log "Validating database schema..."
     
-    # Check if backend directory exists
-    if [ ! -d "$BACKEND_DIR" ]; then
-        log_error "Backend directory not found: $BACKEND_DIR"
-        return 1
-    fi
+    cd "$BACKEND_DIR/.."
     
-    cd "$BACKEND_DIR"
-    
-    # Check for .env file
-    if [ ! -f ".env" ]; then
-        log_warning ".env file not found - creating from template"
-        if [ -f ".env.example" ]; then
-            cp .env.example .env
-            log_warning "Please configure your API keys in .env file"
+    # Run database schema validation script
+    if python3 scripts/validate_database_schema.py; then
+        log_success "Database schema validation passed"
+        return 0
+    else
+        log_error "Database schema validation failed"
+        log "This may cause prediction storage issues"
+        
+        # Ask user if they want to continue
+        read -p "Continue with backend startup anyway? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log_warning "Continuing with potentially invalid database schema"
+            return 0
         else
-            log_error "No .env.example template found"
+            log_error "Backend startup aborted due to schema validation failure"
             return 1
         fi
     fi
+}
+
+# Environment validation
+validate_environment() {
+    log "Validating environment..."
     
-    # Check for Poetry
-    if ! command -v poetry &> /dev/null; then
-        log_error "Poetry not found. Please install Poetry first:"
-        log_error "curl -sSL https://install.python-poetry.org | python3 -"
+    # Check if we're in the correct directory
+    if [ ! -f "$BACKEND_DIR/pyproject.toml" ]; then
+        log_error "Backend directory not found or invalid: $BACKEND_DIR"
         return 1
     fi
     
-    # Check Python version
-    local python_version=$(python3 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
-    log_success "Python version: $python_version"
+    # Check if .env file exists
+    if [ ! -f "$BACKEND_DIR/../.env" ]; then
+        log_warning ".env file not found in project root"
+        log "Creating basic .env file..."
+        touch "$BACKEND_DIR/../.env"
+    fi
     
-    # Validate Poetry project
-    if [ ! -f "pyproject.toml" ]; then
-        log_error "pyproject.toml not found - not a valid Poetry project"
-        return 1
+    # Check for required environment variables
+    cd "$BACKEND_DIR"
+    
+    # Load environment variables
+    if [ -f "../.env" ]; then
+        export $(grep -v '^#' ../.env | xargs) 2>/dev/null || true
     fi
     
     log_success "Environment validation passed"
@@ -183,34 +194,48 @@ start_with_retries() {
     local attempt=1
     
     while [ $attempt -le $MAX_RETRIES ]; do
-        log "🎯 Startup attempt $attempt/$MAX_RETRIES"
+        log "🚀 Backend startup attempt $attempt/$MAX_RETRIES"
         
-        # Run startup sequence
-        if validate_environment && install_dependencies && check_port && start_backend && health_check; then
-            log_success "🎉 Backend startup successful!"
-            log "🌐 Backend available at: http://localhost:$PORT"
-            log "🏥 Health check: http://localhost:$PORT/health"
+        # Validate database schema first (critical for prediction storage)
+        if ! validate_database_schema; then
+            log_error "Database schema validation failed on attempt $attempt"
+            ((attempt++))
+            continue
+        fi
+        
+        # Validate environment
+        if ! validate_environment; then
+            log_error "Environment validation failed on attempt $attempt"
+            ((attempt++))
+            continue
+        fi
+        
+        # Install dependencies
+        if ! install_dependencies; then
+            log_error "Dependency installation failed on attempt $attempt"
+            ((attempt++))
+            continue
+        fi
+        
+        # Check port availability
+        check_port
+        
+        # Start the backend
+        if start_backend; then
+            log_success "Backend started successfully on attempt $attempt"
             return 0
         else
-            log_error "Startup attempt $attempt failed"
+            log_error "Backend startup failed on attempt $attempt"
+            ((attempt++))
             
-            # Cleanup on failure
-            if [ -f ".backend_pid" ]; then
-                local pid=$(cat .backend_pid)
-                kill -TERM $pid 2>/dev/null || true
-                rm -f .backend_pid
-            fi
-            
-            if [ $attempt -lt $MAX_RETRIES ]; then
-                log "⏳ Waiting 5 seconds before retry..."
+            if [ $attempt -le $MAX_RETRIES ]; then
+                log "Waiting 5 seconds before retry..."
                 sleep 5
             fi
         fi
-        
-        ((attempt++))
     done
     
-    log_error "🚫 Backend startup failed after $MAX_RETRIES attempts"
+    log_error "All $MAX_RETRIES startup attempts failed"
     return 1
 }
 

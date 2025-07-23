@@ -76,6 +76,18 @@ const MODERN_COLORS = {
   accent: '#8b5cf6'        // Purple accent
 };
 
+// Helper function to get agent icons
+const getAgentIcon = (type) => {
+  switch (type) {
+    case 'technical': return <TechnicalIcon />;
+    case 'fundamental': return <FundamentalIcon />;
+    case 'sentiment': return <SentimentIcon />;
+    case 'risk': return <RiskIcon />;
+    case 'portfolio': return <PortfolioIcon />;
+    default: return <PersonIcon />;
+  }
+};
+
 // Convert JSON analysis to plain English (from AgentNetworkVisualization)
 const convertAnalysisToPlainEnglish = (analysis) => {
   if (typeof analysis === 'string') {
@@ -200,17 +212,6 @@ const AgentNode = React.memo(({ data }) => {
   const { theme, financialColors } = useCustomTheme();
   const [isHovered, setIsHovered] = useState(false);
   
-  const getAgentIcon = (type) => {
-    switch (type) {
-      case 'technical': return <TechnicalIcon />;
-      case 'fundamental': return <FundamentalIcon />;
-      case 'sentiment': return <SentimentIcon />;
-      case 'risk': return <RiskIcon />;
-      case 'portfolio': return <PortfolioIcon />;
-      default: return <PersonIcon />;
-    }
-  };
-
   const getSignalColor = (signal) => {
     // Ensure we always return a valid color
     const colors = {

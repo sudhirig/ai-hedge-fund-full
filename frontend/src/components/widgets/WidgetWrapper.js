@@ -85,6 +85,39 @@ const WidgetWrapper = ({
   const [refreshKey, setRefreshKey] = useState(0);
   const isMobile = useMediaQuery(theme?.breakpoints?.down ? theme.breakpoints.down('sm') : '(max-width:600px)');
   
+  // Create safeTheme with fallback to prevent undefined errors
+  const safeTheme = useMemo(() => {
+    if (!theme) {
+      // Fallback theme structure
+      return {
+        palette: {
+          background: {
+            paper: '#ffffff',
+            default: '#f5f5f5'
+          },
+          divider: '#e0e0e0',
+          primary: {
+            main: '#1976d2'
+          },
+          text: {
+            primary: '#000000',
+            secondary: '#666666'
+          }
+        },
+        shadows: [
+          'none',
+          '0px 2px 1px -1px rgba(0,0,0,0.2)',
+          '0px 3px 1px -2px rgba(0,0,0,0.2)',
+          '0px 3px 3px -2px rgba(0,0,0,0.2)',
+          '0px 2px 4px -1px rgba(0,0,0,0.2)',
+          ...Array(20).fill('0px 2px 4px -1px rgba(0,0,0,0.2)'),
+          '0px 11px 15px -7px rgba(0,0,0,0.2)'
+        ]
+      };
+    }
+    return theme;
+  }, [theme]);
+  
   // Widget component mapping with enhanced error handling
   const widgetMapping = useMemo(() => {
     try {

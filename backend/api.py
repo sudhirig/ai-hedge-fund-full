@@ -10,6 +10,18 @@ import re
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from datetime import datetime
+import asyncio
+
+# Import database manager
+try:
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from src.database.db_manager import DatabaseManager, AgentPrediction
+    DB_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Database manager not available: {e}")
+    DB_AVAILABLE = False
 
 # Load environment variables from .env file
 load_dotenv()
@@ -49,6 +61,130 @@ app = FastAPI(
     description="Advanced AI-powered hedge fund simulation with multi-agent analysis",
     version="1.0.0"
 )
+
+# Global database manager instance
+db_manager = None
+
+# Data mapping helper function
+async def map_to_agent_prediction(db_manager, agent_name: str, ticker: str, agent_data: dict, analysis_timestamp) -> AgentPrediction:
+    """Map API prediction data to AgentPrediction model format"""
+    try:
+        # Debug: Check database manager state
+        print(f"🔍 Debug: db_manager type: {type(db_manager)}")
+        print(f"🔍 Debug: db_manager._pool: {db_manager._pool is not None if db_manager else 'None'}")
+        
+        # Get agent_id from agent_name (try both name and display_name)
+        print(f"🔍 Debug: Looking up agent: '{agent_name}'")
+        agent_info = await db_manager.get_agent_by_name(agent_name)
+        
+        # If not found by name, try by display_name
+        if not agent_info:
+            print(f"🔍 Debug: Agent not found by name, trying display_name lookup...")
+            async with db_manager.get_connection() as conn:
+                result = await conn.fetchrow(
+                    "SELECT * FROM agents WHERE display_name = $1 AND is_active = true",
+                    agent_name
+                )
+                agent_info = dict(result) if result else None
+        
+        print(f"🔍 Debug: Agent lookup result: {agent_info is not None}")
+        
+        if not agent_info:
+            # Debug: List all available agents
+            try:
+                all_agents = await db_manager.get_all_active_agents()
+                print(f"🔍 Debug: Available agents ({len(all_agents)}):")
+                for i, agent in enumerate(all_agents[:5]):  # Show first 5
+                    print(f"  {i+1}. '{agent['name']}' (display: '{agent.get('display_name', 'N/A')}')") 
+            except Exception as debug_e:
+                print(f"🔍 Debug: Error listing agents: {debug_e}")
+            
+            raise ValueError(f"Agent not found: {agent_name}")
+        
+        agent_id = agent_info['id']
+        print(f"🔍 Debug: Found agent_id: {agent_id}")
+        
+        # Get instrument_id from ticker
+        instrument_info = await db_manager.get_instrument_by_ticker(ticker)
+        if not instrument_info:
+            # Create instrument if it doesn't exist
+            instrument_id = await db_manager.create_instrument_if_not_exists(
+                ticker=ticker,
+                name=ticker,  # Use ticker as name for now
+                market='US',
+                currency='USD'
+            )
+        else:
+            instrument_id = instrument_info['id']
+        
+        # Create AgentPrediction object with proper data mapping
+        prediction = AgentPrediction(
+            agent_id=agent_id,
+            instrument_id=instrument_id,
+            signal=agent_data['signal'],
+            confidence=float(agent_data['confidence']),
+            reasoning={'text': agent_data['reasoning']},  # Convert string to dict
+            market_conditions={},  # Default empty dict
+            financial_metrics={},  # Default empty dict
+            price_data={},  # Default empty dict
+            target_price=None,  # Default None
+            stop_loss=None,  # Default None
+            time_horizon_days=30,  # Default 30 days
+            position_size_pct=None,  # Default None
+            model_version="1.0",  # Default version
+            feature_vector={},  # Default empty dict
+            external_factors={}  # Default empty dict
+        )
+        
+        return prediction
+        
+    except Exception as e:
+        print(f"⚠️  Error mapping prediction data for {agent_name}/{ticker}: {e}")
+        raise
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connection on startup"""
+    global db_manager
+    try:
+        db_manager = DatabaseManager()
+        await db_manager.initialize()
+        
+        # Force database schema synchronization
+        await synchronize_database_schema(db_manager)
+        
+        print("✅ Database connection established")
+    except Exception as e:
+        print(f"❌ Failed to initialize database: {e}")
+        raise
+
+async def synchronize_database_schema(db_manager: DatabaseManager):
+    """Ensure database schema is synchronized across all connections"""
+    try:
+        print("🔄 Synchronizing database schema...")
+        
+        # Force connection pool refresh
+        await db_manager.close()
+        await db_manager.initialize()
+        
+        # Validate critical schema elements
+        async with db_manager.get_connection() as conn:
+            # Check if position_size_pct column exists
+            result = await conn.fetchval("""
+                SELECT COUNT(*) 
+                FROM information_schema.columns 
+                WHERE table_name = 'agent_predictions' 
+                AND column_name = 'position_size_pct';
+            """)
+            
+            if result == 0:
+                raise Exception("Critical column 'position_size_pct' not found in agent_predictions table")
+            
+            print("✅ Database schema synchronized successfully")
+            
+    except Exception as e:
+        print(f"❌ Database schema synchronization failed: {e}")
+        raise
 
 # Allow frontend requests from specific origins for local testing
 app.add_middleware(
@@ -129,9 +265,13 @@ class AgentChatRequest(BaseModel):
     chat_history: Optional[List[ChatMessage]] = Field(default_factory=list)
 
 @app.get("/health")
-def health_check():
+async def health_check():
     """Health check endpoint with detailed system status."""
     try:
+        # Check if main.py exists
+        current_dir = Path(__file__).parent
+        main_py_path = current_dir.parent / "src" / "main.py"
+        
         # Check environment variables
         env_status = {
             "financial_api": bool(os.getenv("FINANCIAL_DATASETS_API_KEY")),
@@ -139,35 +279,366 @@ def health_check():
             "openai_api": bool(os.getenv("OPENAI_API_KEY")),
         }
         
-        # Check if main.py exists
-        main_py_path = Path(__file__).parent.parent / "src" / "main.py"
-        main_py_exists = main_py_path.exists()
+        # Check Python dependencies
+        dependencies = {
+            "main_script": main_py_path.exists(),
+        }
         
-        # Check critical dependencies
         try:
             import pandas
-            import yfinance
-            pandas_ok = True
+            dependencies["pandas"] = True
         except ImportError:
-            pandas_ok = False
+            dependencies["pandas"] = False
         
-        status = "healthy" if main_py_exists and pandas_ok and env_status["financial_api"] else "degraded"
+        # Check database status
+        database_status = {
+            "available": DB_AVAILABLE,
+            "connected": False,
+            "tables_exist": False
+        }
+        
+        if db_manager:
+            try:
+                database_status["connected"] = await db_manager.health_check()
+                if database_status["connected"]:
+                    # Quick check if tables exist by trying to get prediction count
+                    try:
+                        await db_manager.get_agent_performance_summary(days=1)
+                        database_status["tables_exist"] = True
+                    except Exception:
+                        database_status["tables_exist"] = False
+            except Exception as e:
+                database_status["error"] = str(e)
+        
+        # Overall health status
+        all_critical_healthy = (
+            dependencies["main_script"] and 
+            env_status["financial_api"] and
+            (env_status["anthropic_api"] or env_status["openai_api"])
+        )
         
         return {
-            "status": status,
+            "status": "healthy" if all_critical_healthy else "degraded",
             "timestamp": time.time(),
             "environment": env_status,
-            "dependencies": {
-                "main_script": main_py_exists,
-                "pandas": pandas_ok
-            },
-            "warnings": [] if status == "healthy" else ["Some components may not function properly"]
+            "dependencies": dependencies,
+            "database": database_status,
+            "version": "1.0.0"
         }
+        
     except Exception as e:
         return {
             "status": "unhealthy",
-            "timestamp": time.time(),
-            "error": str(e)
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+# Import the new aggregation system services
+try:
+    from backend.services.aggregation_service import AggregationService
+    from backend.services.verdict_service import VerdictService
+    from backend.services.analytics_service import AnalyticsService
+    AGGREGATION_AVAILABLE = True
+except ImportError as e:
+    print(f"  Aggregation services not available: {e}")
+    AGGREGATION_AVAILABLE = False
+
+# Agent Aggregation System API endpoints
+@app.post("/api/aggregate-results")
+async def aggregate_agent_results(tickers: List[str], period_type: str = "monthly"):
+    """
+    Aggregate agent outputs for specified stocks over a time period.
+    
+    Args:
+        tickers: List of stock tickers to aggregate
+        period_type: "monthly" or "quarterly"
+    
+    Returns:
+        Aggregation results with consolidated agent outputs
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Aggregation services not available"}
+    
+    try:
+        aggregation_service = AggregationService(db_manager)
+        results = await aggregation_service.aggregate_period_results(
+            tickers=tickers,
+            period_type=period_type
+        )
+        return {"status": "success", "data": results}
+    except Exception as e:
+        return {"error": f"Aggregation failed: {str(e)}"}
+
+@app.post("/api/generate-verdict")
+async def generate_portfolio_verdict(period_id: str, custom_criteria: Optional[Dict] = None):
+    """
+    Generate portfolio manager verdict for a specific aggregation period.
+    
+    Args:
+        period_id: ID of the aggregation period
+        custom_criteria: Optional custom verdict criteria
+    
+    Returns:
+        Portfolio manager verdict with recommendations
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Verdict services not available"}
+    
+    try:
+        verdict_service = VerdictService(db_manager)
+        verdict = await verdict_service.generate_verdict(
+            period_id=period_id,
+            custom_criteria=custom_criteria
+        )
+        return {"status": "success", "verdict": verdict}
+    except Exception as e:
+        return {"error": f"Verdict generation failed: {str(e)}"}
+
+@app.get("/api/top-stocks")
+async def get_top_stocks(period_type: str = "monthly", limit: int = 10, criteria: str = "overall_score"):
+    """
+    Get top-ranked stocks based on aggregated agent analysis.
+    
+    Args:
+        period_type: "monthly" or "quarterly"
+        limit: Number of top stocks to return
+        criteria: Ranking criteria ("overall_score", "consensus", "confidence")
+    
+    Returns:
+        Top stocks with rankings and scores
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Analytics services not available"}
+    
+    try:
+        analytics_service = AnalyticsService(db_manager)
+        top_stocks = await analytics_service.get_top_stocks(
+            period_type=period_type,
+            limit=limit,
+            criteria=criteria
+        )
+        return {"status": "success", "data": top_stocks}
+    except Exception as e:
+        return {"error": f"Top stocks analysis failed: {str(e)}"}
+
+@app.get("/api/system-recommendations")
+async def get_system_recommendations(period_type: str = "monthly", limit: int = 5):
+    """
+    Get system-wide investment recommendations based on aggregated analysis.
+    
+    Args:
+        period_type: "monthly" or "quarterly"
+        limit: Number of recommendations to return
+    
+    Returns:
+        System recommendations with detailed rationale
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Analytics services not available"}
+    
+    try:
+        analytics_service = AnalyticsService(db_manager)
+        recommendations = await analytics_service.get_system_recommendations(
+            period_type=period_type,
+            limit=limit
+        )
+        return {"status": "success", "recommendations": recommendations}
+    except Exception as e:
+        return {"error": f"System recommendations failed: {str(e)}"}
+
+@app.get("/api/aggregation-periods")
+async def get_aggregation_periods(period_type: str = "monthly", limit: int = 12):
+    """
+    Get available aggregation periods with summary statistics.
+    
+    Args:
+        period_type: "monthly" or "quarterly"
+        limit: Number of periods to return
+    
+    Returns:
+        Available periods with summary data
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Analytics services not available"}
+    
+    try:
+        analytics_service = AnalyticsService(db_manager)
+        periods = await analytics_service.get_aggregation_periods(
+            period_type=period_type,
+            limit=limit
+        )
+        return {"status": "success", "periods": periods}
+    except Exception as e:
+        return {"error": f"Periods retrieval failed: {str(e)}"}
+
+@app.get("/api/agent-consensus")
+async def get_agent_consensus(ticker: str, period_type: str = "monthly", periods: int = 6):
+    """
+    Get agent consensus analysis for a specific stock over multiple periods.
+    
+    Args:
+        ticker: Stock ticker symbol
+        period_type: "monthly" or "quarterly"
+        periods: Number of periods to analyze
+    
+    Returns:
+        Consensus analysis with trends and agreement levels
+    """
+    if not AGGREGATION_AVAILABLE:
+        return {"error": "Analytics services not available"}
+    
+    try:
+        analytics_service = AnalyticsService(db_manager)
+        consensus = await analytics_service.get_agent_consensus(
+            ticker=ticker,
+            period_type=period_type,
+            periods=periods
+        )
+        return {"status": "success", "consensus": consensus}
+    except Exception as e:
+        return {"error": f"Consensus analysis failed: {str(e)}"}
+
+# Database API endpoints for retrieving stored analysis data
+@app.get("/api/analytics/performance")
+async def get_agent_performance(days: int = 30, agent_name: Optional[str] = None, ticker: Optional[str] = None):
+    """Get agent performance analytics over the specified time period"""
+    if not db_manager:
+        return {
+            "status": "error",
+            "message": "Database not available"
+        }
+    
+    try:
+        performance_data = await db_manager.get_agent_performance_summary(
+            days=days, 
+            agent_name=agent_name, 
+            ticker=ticker
+        )
+        return {
+            "status": "success",
+            "data": performance_data,
+            "metadata": {
+                "days": days,
+                "agent_filter": agent_name,
+                "ticker_filter": ticker
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve performance data: {str(e)}"
+        }
+
+@app.get("/api/analytics/predictions")
+async def get_recent_predictions(limit: int = 100, agent_name: Optional[str] = None, ticker: Optional[str] = None):
+    """Get recent agent predictions with optional filtering"""
+    if not db_manager:
+        return {
+            "status": "error",
+            "message": "Database not available"
+        }
+    
+    try:
+        predictions = await db_manager.get_recent_predictions(
+            limit=limit,
+            agent_name=agent_name,
+            ticker=ticker
+        )
+        return {
+            "status": "success",
+            "data": predictions,
+            "metadata": {
+                "limit": limit,
+                "agent_filter": agent_name,
+                "ticker_filter": ticker,
+                "count": len(predictions)
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve predictions: {str(e)}"
+        }
+
+@app.get("/api/analytics/consensus/{ticker}")
+async def get_consensus_analysis(ticker: str, days: int = 7):
+    """Get consensus analysis for a specific ticker over recent days"""
+    if not db_manager:
+        return {
+            "status": "error",
+            "message": "Database not available"
+        }
+    
+    try:
+        consensus_data = await db_manager.get_consensus_analysis(ticker=ticker, days=days)
+        return {
+            "status": "success",
+            "data": consensus_data,
+            "metadata": {
+                "ticker": ticker,
+                "days": days
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve consensus analysis: {str(e)}"
+        }
+
+@app.get("/api/analytics/trends")
+async def get_market_trends(days: int = 30):
+    """Get market trends and patterns from stored agent data"""
+    if not db_manager:
+        return {
+            "status": "error",
+            "message": "Database not available"
+        }
+    
+    try:
+        trends_data = await db_manager.get_market_trends(days=days)
+        return {
+            "status": "success",
+            "data": trends_data,
+            "metadata": {
+                "days": days
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to retrieve market trends: {str(e)}"
+        }
+
+@app.post("/api/analytics/outcome")
+async def record_prediction_outcome(prediction_id: int, actual_outcome: str, actual_price_change: Optional[float] = None):
+    """Record the actual outcome of a prediction for performance tracking"""
+    if not db_manager:
+        return {
+            "status": "error",
+            "message": "Database not available"
+        }
+    
+    try:
+        outcome_data = {
+            'prediction_id': prediction_id,
+            'actual_outcome': actual_outcome,
+            'actual_price_change': actual_price_change,
+            'outcome_timestamp': datetime.now()
+        }
+        
+        await db_manager.record_prediction_outcome(outcome_data)
+        return {
+            "status": "success",
+            "message": "Prediction outcome recorded successfully",
+            "data": {
+                "prediction_id": prediction_id,
+                "outcome": actual_outcome
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to record outcome: {str(e)}"
         }
 
 @app.post("/api/run")
@@ -184,9 +655,15 @@ async def run_simulation(req: RunRequest):
         if not main_py_path.exists():
             raise FileNotFoundError(f"main.py not found at {main_py_path}")
         
-        # Prepare command arguments
+        # Prepare command arguments with explicit Python path
+        python_executable = "/usr/local/bin/python3"  # Use system Python3
+        
+        # Fallback to sys.executable if system python3 not available
+        if not os.path.exists(python_executable):
+            python_executable = sys.executable
+            
         cmd = [
-            sys.executable, str(main_py_path),
+            python_executable, str(main_py_path),
             "--tickers", req.tickers,
             "--start-date", req.start_date,
             "--end-date", req.end_date,
@@ -196,6 +673,12 @@ async def run_simulation(req: RunRequest):
         ]
         
         print(f"🚀 Starting simulation with command: {' '.join(cmd)}")
+        print(f"📁 Working directory: {current_dir.parent}")
+        print(f"🐍 Python executable: {python_executable}")
+        
+        # Prepare environment with Python path
+        env = os.environ.copy()
+        env['PYTHONPATH'] = str(current_dir.parent)
         
         # Run the simulation with timeout and proper error handling
         try:
@@ -205,7 +688,7 @@ async def run_simulation(req: RunRequest):
                 text=True,
                 timeout=300,  # 5 minutes timeout
                 cwd=current_dir.parent,
-                env=os.environ.copy()  # Pass all environment variables
+                env=env  # Use enhanced environment
             )
             
             if result.returncode != 0:
@@ -262,6 +745,8 @@ async def run_simulation(req: RunRequest):
                 
                 agents[display_name] = agent_data
 
+            print(f"🔍 FLOW: About to parse portfolio decisions...")
+            
             # Parse portfolio manager decisions from debug logs
             # Pattern: 'Agent: portfolio_management_agent' followed by decisions data
             portfolio_pattern = r'🔍 LLM DEBUG - Agent: portfolio_management_agent[\s\S]*?📄 Raw Result: decisions=\{([\s\S]*?)\}[\s\S]*?(?=🔍|✅|$)'
@@ -269,6 +754,7 @@ async def run_simulation(req: RunRequest):
             
             decisions = {}
             if portfolio_match:
+                print(f"🔍 FLOW: Found portfolio match, parsing decisions...")
                 # Parse the portfolio decision data structure
                 decision_text = portfolio_match.group(1)
                 # Extract ticker decisions - look for 'TICKER': PortfolioDecision(...)
@@ -282,7 +768,136 @@ async def run_simulation(req: RunRequest):
                         'confidence': float(confidence),
                         'reasoning': reasoning
                     }
+                print(f"🔍 FLOW: Parsed {len(decisions)} portfolio decisions")
+            else:
+                print(f"🔍 FLOW: No portfolio match found")
 
+            print(f"🔍 FLOW: About to start database storage section...")
+            
+            # Setup database error logging
+            import logging
+            db_logger = logging.getLogger('database_errors')
+            if not db_logger.handlers:
+                handler = logging.FileHandler('/tmp/database_errors.log')
+                formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+                handler.setFormatter(formatter)
+                db_logger.addHandler(handler)
+                db_logger.setLevel(logging.ERROR)
+            
+            # Store analysis results in database if available
+            stored_predictions = []
+            print(f"🔍 Database manager status: {db_manager is not None}")
+            print(f"🔍 Database manager type: {type(db_manager)}")
+            db_logger.info(f"Database manager status: {db_manager is not None}")
+            
+            if db_manager:
+                try:
+                    print(f"🔍 Starting database storage for {len(agents)} agents and {len(tickers)} tickers")
+                    db_logger.info(f"Starting database storage for {len(agents)} agents and {len(tickers)} tickers")
+                    analysis_timestamp = datetime.now()
+                    
+                    # Store agent predictions
+                    for agent_name, agent_data in agents.items():
+                        for ticker in tickers:
+                            if ticker in agent_data:
+                                try:
+                                    print(f"🔍 Processing {agent_name}/{ticker}...")
+                                    db_logger.info(f"Processing {agent_name}/{ticker}...")
+                                    
+                                    # Map API data to AgentPrediction model format
+                                    prediction = await map_to_agent_prediction(
+                                        db_manager, agent_name, ticker, agent_data[ticker], analysis_timestamp
+                                    )
+                                    print(f"🔍 Mapped prediction object: {type(prediction)}")
+                                    db_logger.info(f"Mapped prediction object: {type(prediction)} for {agent_name}/{ticker}")
+                                    
+                                    # Log prediction details before saving
+                                    db_logger.info(f"Prediction details: agent_id={getattr(prediction, 'agent_id', 'None')}, instrument_id={getattr(prediction, 'instrument_id', 'None')}, signal={getattr(prediction, 'signal', 'None')}")
+                                    
+                                    # Store prediction in database
+                                    prediction_id = await db_manager.save_agent_prediction(prediction)
+                                    stored_predictions.append({
+                                        'prediction_id': prediction_id,
+                                        'agent': agent_name,
+                                        'ticker': ticker,
+                                    })
+                                    print(f"✅ Stored prediction for {agent_name}/{ticker}: {prediction_id}")
+                                    db_logger.info(f"Successfully stored prediction for {agent_name}/{ticker}: {prediction_id}")
+                                    
+                                except Exception as e:
+                                    error_msg = f"Failed to store prediction for {agent_name}/{ticker}: {e}"
+                                    print(f"⚠️  {error_msg}")
+                                    db_logger.error(error_msg)
+                                    import traceback
+                                    full_traceback = traceback.format_exc()
+                                    print(f"⚠️  Full traceback: {full_traceback}")
+                                    db_logger.error(f"Full traceback for {agent_name}/{ticker}: {full_traceback}")
+                                    # Continue with other predictions even if one fails
+                    
+                    # Store portfolio decisions
+                    db_logger.info(f"Starting portfolio decision storage for {len(decisions)} decisions")
+                    for ticker, decision in decisions.items():
+                        try:
+                            print(f"🔍 Processing portfolio decision for {ticker}...")
+                            db_logger.info(f"Processing portfolio decision for {ticker}: {decision}")
+                            
+                            # Create proper decision data structure for mapping
+                            decision_data = {
+                                'signal': decision['action'].lower(),
+                                'confidence': decision['confidence'],
+                                'reasoning': {
+                                    'action': decision['action'],
+                                    'quantity': decision['quantity'],
+                                    'reasoning': decision['reasoning']
+                                }
+                            }
+                            
+                            # Map portfolio decision to AgentPrediction object
+                            prediction = await map_to_agent_prediction(
+                                db_manager, 'Portfolio Manager', ticker, decision_data, analysis_timestamp
+                            )
+                            db_logger.info(f"Mapped portfolio decision object: {type(prediction)} for {ticker}")
+                            
+                            # Log prediction details before saving
+                            db_logger.info(f"Portfolio prediction details: agent_id={getattr(prediction, 'agent_id', 'None')}, instrument_id={getattr(prediction, 'instrument_id', 'None')}, signal={getattr(prediction, 'signal', 'None')}")
+                            
+                            # Store prediction in database
+                            prediction_id = await db_manager.save_agent_prediction(prediction)
+                            stored_predictions.append({
+                                'prediction_id': prediction_id,
+                                'agent': 'Portfolio Manager',
+                                'ticker': ticker,
+                                'action': decision['action']
+                            })
+                            print(f"✅ Stored portfolio decision for {ticker}: {prediction_id}")
+                            db_logger.info(f"Successfully stored portfolio decision for {ticker}: {prediction_id}")
+                            
+                        except Exception as e:
+                            error_msg = f"Failed to store portfolio decision for {ticker}: {e}"
+                            print(f"⚠️  {error_msg}")
+                            db_logger.error(error_msg)
+                            import traceback
+                            full_traceback = traceback.format_exc()
+                            print(f"⚠️  Full traceback: {full_traceback}")
+                            db_logger.error(f"Full traceback for portfolio decision {ticker}: {full_traceback}")
+                            # Continue with other decisions even if one fails
+                    
+                    print(f"✅ Stored {len(stored_predictions)} predictions in database")
+                    db_logger.info(f"Successfully stored {len(stored_predictions)} predictions in database")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to store analysis results in database: {e}"
+                    print(f"⚠️  {error_msg}")
+                    db_logger.error(error_msg)
+                    import traceback
+                    full_traceback = traceback.format_exc()
+                    print(f"⚠️  Full database storage traceback: {full_traceback}")
+                    db_logger.error(f"Full database storage traceback: {full_traceback}")
+                    # Continue without database storage
+            else:
+                print(f"⚠️  Database manager not available - skipping prediction storage")
+                db_logger.warning("Database manager not available - skipping prediction storage")
+            
             return {
                 "status": "success", 
                 "data": {
@@ -293,7 +908,9 @@ async def run_simulation(req: RunRequest):
                 "metadata": {
                     "execution_time": "N/A",  # Could add timing
                     "tickers": req.tickers,
-                    "date_range": f"{req.start_date} to {req.end_date}"
+                    "date_range": f"{req.start_date} to {req.end_date}",
+                    "stored_predictions": len(stored_predictions) if stored_predictions else 0,
+                    "database_enabled": db_manager is not None
                 }
             }
             
@@ -319,6 +936,9 @@ async def run_simulation(req: RunRequest):
         }
         
     except ValueError as e:
+        print(f"❌ ValueError in simulation: {e}")
+        import traceback
+        print(f"❌ ValueError traceback: {traceback.format_exc()}")
         return {
             "status": "error",
             "message": f"Invalid input: {str(e)}",
@@ -327,6 +947,8 @@ async def run_simulation(req: RunRequest):
         
     except Exception as e:
         print(f"❌ Unexpected error in simulation: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
         return {
             "status": "error",
             "message": "An unexpected error occurred",
