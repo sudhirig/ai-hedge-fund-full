@@ -3,11 +3,7 @@ services:
   - type: pserv
     name: ai-hedge-fund-db
     plan: free
-    databaseName: ai_hedge_fund
-    user: ai_hedge_fund_user
     region: oregon
-    postgresMajorVersion: 15
-    ipAllowList: []
 
   # FastAPI Backend
   - type: web
@@ -73,8 +69,5 @@ services:
 
 databases:
   - name: ai-hedge-fund-db
-    databaseName: ai_hedge_fund
-    user: ai_hedge_fund_user
     plan: free
     region: oregon
-    postgresMajorVersion: 15
