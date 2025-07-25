@@ -15,7 +15,7 @@
     "react-dom": "^18.3.1",
     "react-force-graph-3d": "^1.27.0",
     "react-grid-layout": "^1.5.1",
-    "react-router-dom": "^7.6.0",
+    "react-router-dom": "^6.26.1",
     "react-scripts": "5.0.1",
     "reactflow": "^11.11.4",
     "readdirp": "^4.1.2",
