@@ -57,7 +57,7 @@ services:
       - key: GENERATE_SOURCEMAP
         value: false
       - key: NODE_VERSION
-        value: 18
+        value: 20
 
 databases:
   - name: ai-hedge-fund-db
