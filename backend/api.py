@@ -177,9 +177,71 @@ async def startup_event():
         raise
 
 async def run_database_migration(db_manager: DatabaseManager):
-    """Run database migration to add missing columns"""
+    """Run database migration to create schema and add missing columns"""
     try:
-        print("🔧 Running database migration...")
+        print("🔧 Running comprehensive database migration...")
+        
+        # First, create the complete schema if tables don't exist
+        await create_database_schema(db_manager)
+        
+        # Then, add any missing columns to existing tables
+        await add_missing_columns_to_tables(db_manager)
+        
+        print("✅ Database migration completed successfully")
+        
+    except Exception as e:
+        print(f"⚠️  Database migration warning: {e}")
+        # Don't raise - allow startup to continue with warnings
+
+async def create_database_schema(db_manager: DatabaseManager):
+    """Create the complete database schema if it doesn't exist"""
+    try:
+        print("🏠 Creating database schema...")
+        
+        async with db_manager.get_connection() as conn:
+            # Check if core tables exist
+            result = await conn.fetchval(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'agents'"
+            )
+            
+            if result == 0:
+                print("🛠️  Core tables not found, creating complete schema...")
+                
+                # Read and execute the complete schema
+                import os
+                from pathlib import Path
+                
+                # Get the schema file path
+                current_dir = Path(__file__).parent.parent
+                schema_path = current_dir / 'database' / 'schema.sql'
+                
+                if schema_path.exists():
+                    with open(schema_path, 'r') as f:
+                        schema_sql = f.read()
+                    
+                    # Execute schema creation
+                    await conn.execute(schema_sql)
+                    print("✅ Complete database schema created successfully")
+                    
+                    # Also run initial data
+                    initial_data_path = current_dir / 'database' / 'initial_data.sql'
+                    if initial_data_path.exists():
+                        with open(initial_data_path, 'r') as f:
+                            initial_data_sql = f.read()
+                        await conn.execute(initial_data_sql)
+                        print("✅ Initial data populated successfully")
+                else:
+                    print("⚠️  Schema file not found, skipping schema creation")
+            else:
+                print("ℹ️  Core tables already exist, skipping schema creation")
+                
+    except Exception as e:
+        print(f"⚠️  Schema creation warning: {e}")
+
+async def add_missing_columns_to_tables(db_manager: DatabaseManager):
+    """Add any missing columns to existing tables"""
+    try:
+        print("🔧 Checking for missing columns...")
         
         # Define missing columns that need to be added
         missing_columns = [
