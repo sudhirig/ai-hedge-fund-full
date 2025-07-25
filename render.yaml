@@ -48,10 +48,7 @@ services:
         value: strict-origin-when-cross-origin
     envVars:
       - key: REACT_APP_API_URL
-        fromService:
-          type: web
-          name: ai-hedge-fund-backend
-          property: url
+        value: https://ai-hedge-fund-backend.onrender.com
       - key: REACT_APP_ENVIRONMENT
         value: production
       - key: GENERATE_SOURCEMAP
