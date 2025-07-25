@@ -51,7 +51,7 @@ services:
         fromService:
           type: web
           name: ai-hedge-fund-backend
-          property: host
+          property: url
       - key: REACT_APP_ENVIRONMENT
         value: production
       - key: GENERATE_SOURCEMAP
