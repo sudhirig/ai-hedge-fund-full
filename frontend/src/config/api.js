@@ -5,9 +5,9 @@
 
 const getApiBaseUrl = () => {
   // 1. Environment variable (highest priority)
-  if (process.env.REACT_APP_API_BASE_URL) {
-    console.log('Using API URL from environment:', process.env.REACT_APP_API_BASE_URL);
-    return process.env.REACT_APP_API_BASE_URL;
+  if (process.env.REACT_APP_API_URL) {
+    console.log('Using API URL from environment:', process.env.REACT_APP_API_URL);
+    return process.env.REACT_APP_API_URL;
   }
   
   // 2. Platform auto-detection (no hardcoding needed)
@@ -38,7 +38,7 @@ const getApiBaseUrl = () => {
   
   // Render detection
   if (hostname.includes('onrender.com')) {
-    const renderUrl = process.env.REACT_APP_BACKEND_URL || `${protocol}//${hostname}`;
+    const renderUrl = process.env.REACT_APP_API_URL || 'https://ai-hedge-fund-backend.onrender.com';
     console.log('✅ Detected Render, using URL:', renderUrl);
     return renderUrl;
   }
