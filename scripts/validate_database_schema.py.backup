@@ -81,10 +81,7 @@ async def validate_and_sync_database_schema():
             
             if not required_agents_columns.issubset(found_agents_columns):
                 missing = required_agents_columns - found_agents_columns
-                print(f"⚠️  Warning: Missing columns in agents: {missing}")
-                print("⚠️  This may cause some features to not work properly")
-                print("⚠️  Consider running the permanent schema fix script")
-                # Continue with warnings instead of failing
+                raise Exception(f"❌ Missing required columns in agents: {missing}")
             
             # Check instruments table schema
             instruments_result = await conn.fetch("""

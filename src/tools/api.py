@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import requests
+import time
 
 from data.cache import get_cache
 from data.models import (
@@ -183,9 +184,58 @@ def search_line_items(
         "period": period,
         "limit": limit,
     }
-    response = requests.post(url, headers=headers, json=body)
-    if response.status_code != 200:
-        raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+    # Implement robust retry logic for rate limiting
+    max_retries = 3
+    base_delay = 2.0
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, json=body, timeout=30)
+            
+            if response.status_code == 200:
+                break
+            elif response.status_code == 429:  # Rate limited
+                if attempt < max_retries - 1:
+                    # Extract retry-after from response if available
+                    retry_after = response.headers.get('Retry-After')
+                    if retry_after:
+                        delay = int(retry_after)
+                    else:
+                        # Parse delay from response body if available
+                        try:
+                            error_data = response.json()
+                            if 'Expected available in' in error_data.get('detail', ''):
+                                import re
+                                match = re.search(r'(\d+) seconds', error_data['detail'])
+                                delay = int(match.group(1)) if match else base_delay * (2 ** attempt)
+                            else:
+                                delay = base_delay * (2 ** attempt)
+                        except:
+                            delay = base_delay * (2 ** attempt)
+                    
+                    print(f"⏳ Rate limited. Waiting {delay}s before retry {attempt + 1}/{max_retries}...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise Exception(f"Rate limit exceeded after {max_retries} attempts: {ticker} - {response.status_code} - {response.text}")
+            else:
+                raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                print(f"⏳ Request timeout. Retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            else:
+                raise Exception(f"Request timeout after {max_retries} attempts for {ticker}")
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                print(f"⏳ Request failed: {e}. Retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            else:
+                raise Exception(f"Request failed after {max_retries} attempts for {ticker}: {e}")
     data = response.json()
     response_model = LineItemResponse(**data)
     search_results = response_model.search_results

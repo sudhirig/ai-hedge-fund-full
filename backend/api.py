@@ -62,6 +62,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Configure CORS middleware for production deployment
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "https://*.render.com",   # Render frontend
+        "https://*.netlify.app",  # Netlify deployments
+        "https://*.vercel.app",   # Vercel deployments
+        "https://ai-hedge-fund-app.windsurf.build",  # Windsurf deployment
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Global database manager instance
 db_manager = None
 
@@ -186,14 +201,7 @@ async def synchronize_database_schema(db_manager: DatabaseManager):
         print(f"❌ Database schema synchronization failed: {e}")
         raise
 
-# Allow frontend requests from specific origins for local testing
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
+
 
 # Agent Configuration Models
 class AgentConfig(BaseModel):

@@ -280,7 +280,7 @@ export default function HedgeFundDashboard() {
       const errorMessage = err.response?.data?.error || err.message;
       
       if (err.message === 'Network Error') {
-        setError('Network Error: Cannot connect to the backend server. Please ensure the backend is running at http://localhost:8000');
+        setError('Network Error: Cannot connect to the backend server. Please check your internet connection and try again.');
       } else if (errorMessage === 'No high-confidence signals detected' || 
                 errorMessage?.includes('high-confidence') || 
                 errorMessage?.includes('confidence threshold')) {

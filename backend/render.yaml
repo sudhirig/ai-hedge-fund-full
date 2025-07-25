@@ -1,22 +1,21 @@
 services:
   - type: web
-    name: ai-hedge-fund-api
+    name: ai-hedge-fund-backend
     runtime: python
-    buildCommand: pip install poetry && poetry install
-    startCommand: poetry run uvicorn api:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install poetry
+      poetry config virtualenvs.create false
+      poetry install --only=main
+      # Database schema will be handled by the application on startup
+    startCommand: poetry run uvicorn api:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 300
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9
-    cors:
-      allowedOrigins:
-        - https://ai-hedge-fund-app.windsurf.build
-        - https://ai-hedge-fund-dashboard.windsurf.build
-      allowedMethods:
-        - GET
-        - POST
-        - PUT
-        - DELETE
-        - OPTIONS
-      allowedHeaders:
-        - "*"
-      allowCredentials: true
+        value: "3.9"
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+    scaling:
+      minInstances: 1
+      maxInstances: 3
