@@ -31,7 +31,6 @@ services:
   - type: web
     name: ai-hedge-fund-frontend
     runtime: static
-    plan: free
     branch: main
     rootDir: frontend
     buildCommand: npm install && npm run build
