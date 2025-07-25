@@ -6,7 +6,7 @@ services:
     plan: free
     region: oregon
     branch: main
-    buildCommand: pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev
+    buildCommand: pip install poetry && poetry config virtualenvs.create false && poetry install --only=main
     startCommand: poetry run uvicorn api:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 300
     healthCheckPath: /health
     envVars:
