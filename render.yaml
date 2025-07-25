@@ -1,0 +1,80 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: ai-hedge-fund-db
+    plan: free
+    databaseName: ai_hedge_fund
+    user: ai_hedge_fund_user
+    region: oregon
+    postgresMajorVersion: 15
+    ipAllowList: []
+
+  # FastAPI Backend
+  - type: web
+    name: ai-hedge-fund-backend
+    runtime: python3
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev
+    startCommand: poetry run uvicorn api:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 300
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-hedge-fund-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false  # You'll set this manually in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false  # You'll set this manually in Render dashboard
+      - key: FINANCIAL_DATASETS_API_KEY
+        sync: false  # You'll set this manually in Render dashboard
+
+  # React Frontend
+  - type: web
+    name: ai-hedge-fund-frontend
+    runtime: static
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: ai-hedge-fund-backend
+          property: host
+      - key: REACT_APP_ENVIRONMENT
+        value: production
+      - key: GENERATE_SOURCEMAP
+        value: false
+      - key: NODE_VERSION
+        value: 18
+
+databases:
+  - name: ai-hedge-fund-db
+    databaseName: ai_hedge_fund
+    user: ai_hedge_fund_user
+    plan: free
+    region: oregon
+    postgresMajorVersion: 15
