@@ -1,7 +1,7 @@
-# 🚀 **AI Hedge Fund Platform - Comprehensive System Documentation**
+# 🚀 **AI Hedge Fund Platform - System Architecture Documentation**
 
-*Generated: July 13, 2025*  
-*Complete record of system architecture, implementations, and roadmap*
+*Updated: July 26, 2025*  
+*Current system architecture, components, and technical specifications*
 
 ---
 

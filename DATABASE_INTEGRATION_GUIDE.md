@@ -1,16 +1,18 @@
-# AI Hedge Fund - Database Integration Guide
+# AI Hedge Fund - Database Architecture Guide
+
+*Updated: July 26, 2025*
 
 ## Overview
 
-The AI Hedge Fund platform now includes a comprehensive PostgreSQL database integration that automatically stores all agent analysis results, enabling persistent storage, continuous learning, and advanced analytics capabilities.
+The AI Hedge Fund platform features a production-grade PostgreSQL database that automatically stores all agent analysis results, enabling persistent storage, performance tracking, and advanced analytics.
 
-## 🏗️ Architecture
+## 🏗️ Current Architecture
 
 ### Database Components
-- **PostgreSQL 15**: Primary database for storing agent predictions, outcomes, and analytics
-- **PostgREST**: RESTful API layer providing direct database access
-- **FastAPI Integration**: Automatic storage of analysis results via backend API
-- **Redis** (optional): Caching layer for improved performance
+- **PostgreSQL 15/17**: Production database (local development/cloud deployment)
+- **AsyncPG**: High-performance async database driver
+- **FastAPI Integration**: Automatic storage via backend API
+- **Neon Cloud**: Managed PostgreSQL for production deployment
 
 ### Key Features
 - ✅ **Automatic Storage**: Every agent analysis is automatically stored in the database
