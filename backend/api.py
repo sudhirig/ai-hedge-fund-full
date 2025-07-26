@@ -427,8 +427,12 @@ async def health_check():
         env_status = {
             "financial_api": bool(os.getenv("FINANCIAL_DATASETS_API_KEY")),
             "anthropic_api": bool(os.getenv("ANTHROPIC_API_KEY")),
-            "openai_api": bool(os.getenv("OPENAI_API_KEY")),
+            "openai_api": bool(os.getenv("OPENAI_API_KEY"))
         }
+        
+        # Quick startup check - if server just started, be more lenient
+        uptime_seconds = time.time() - startup_time
+        is_starting_up = uptime_seconds < 30  # First 30 seconds after startup
         
         # Lightweight dependency check (already imported)
         dependencies = {
@@ -437,20 +441,37 @@ async def health_check():
         }
         
         # Quick database status (no expensive queries)
-        database_status = {
-            "available": DB_AVAILABLE,
-            "connected": db_manager is not None
-        }
-        
-        # Add agent count from memory if available
+        database_status = {"available": False}
         if db_manager:
             try:
-                # Quick agent count check (use existing method)
-                agents = await db_manager.get_all_agents()
-                database_status["agent_count"] = len(agents) if agents else 0
-                database_status["expected_agents"] = 17
-            except Exception:
-                database_status["agent_count"] = 0
+                # During startup, use shorter timeout for database checks
+                timeout_duration = 2.0 if is_starting_up else 5.0
+                
+                # Quick agent count check (efficient query)
+                agent_count = await asyncio.wait_for(
+                    db_manager.get_agent_count(), 
+                    timeout=timeout_duration
+                )
+                database_status = {
+                    "available": True,
+                    "connected": True,
+                    "agent_count": agent_count,
+                    "startup_mode": is_starting_up
+                }
+            except asyncio.TimeoutError:
+                database_status = {
+                    "available": True,
+                    "connected": False,
+                    "error": "Database timeout during startup" if is_starting_up else "Database timeout",
+                    "startup_mode": is_starting_up
+                }
+            except Exception as e:
+                database_status = {
+                    "available": True,
+                    "connected": False,
+                    "error": str(e)[:100],  # Truncate long errors
+                    "startup_mode": is_starting_up
+                }
         
         # Overall health status
         all_critical_healthy = (
@@ -1094,9 +1115,20 @@ async def run_simulation(req: RunRequest):
                             }
                             
                             # Map portfolio decision to AgentPrediction object
-                            prediction = await map_to_agent_prediction(
-                                db_manager, 'Portfolio Manager', ticker, decision_data, analysis_timestamp
-                            )
+                            # Use fallback agent if Portfolio Manager doesn't exist
+                            portfolio_agent_name = 'Portfolio Manager'
+                            try:
+                                prediction = await map_to_agent_prediction(
+                                    db_manager, portfolio_agent_name, ticker, decision_data, analysis_timestamp
+                                )
+                            except ValueError as e:
+                                if "Agent not found" in str(e):
+                                    # Fallback: use a generic agent name or create portfolio decisions without agent mapping
+                                    print(f"⚠️  Portfolio Manager agent not found, using fallback approach")
+                                    # Skip storing portfolio decisions as agent predictions since agent doesn't exist
+                                    continue
+                                else:
+                                    raise
                             db_logger.info(f"Mapped portfolio decision object: {type(prediction)} for {ticker}")
                             
                             # Log prediction details before saving
