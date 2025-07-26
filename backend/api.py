@@ -789,27 +789,63 @@ async def run_simulation(req: RunRequest):
         if not main_py_path.exists():
             raise FileNotFoundError(f"main.py not found at {main_py_path}")
         
-        # Use Poetry to run Python with all dependencies available
-        cmd = [
-            "poetry", "run", "python", str(main_py_path),
-            "--tickers", req.tickers,
-            "--start-date", req.start_date,
-            "--end-date", req.end_date,
-            "--initial-cash", str(req.initial_cash),
-            "--show-reasoning",
-            "--no-interactive"
-        ]
+        # Hybrid approach: Try Poetry first, fallback to direct Python
+        # This ensures compatibility with both local development and Render deployment
         
-        print(f"🚀 Starting simulation with command: {' '.join(cmd)}")
-        print(f"📁 Working directory: {current_dir.parent}")
-        print(f"🐍 Using Poetry environment for subprocess execution")
-        
-        # Prepare environment with Python path
+        # Prepare environment with comprehensive Python path
         env = os.environ.copy()
         env['PYTHONPATH'] = str(current_dir.parent)
         
+        # Check if we're in a Poetry environment or Render deployment
+        is_render_deployment = os.getenv('RENDER') == 'true' or os.getenv('ENVIRONMENT') == 'production'
+        poetry_available = False
+        
+        if not is_render_deployment:
+            # Check if Poetry is available for local development
+            try:
+                poetry_check = subprocess.run(['poetry', '--version'], capture_output=True, timeout=5)
+                poetry_available = poetry_check.returncode == 0
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                poetry_available = False
+        
+        if poetry_available and not is_render_deployment:
+            # Use Poetry for local development
+            cmd = [
+                "poetry", "run", "python", str(main_py_path),
+                "--tickers", req.tickers,
+                "--start-date", req.start_date,
+                "--end-date", req.end_date,
+                "--initial-cash", str(req.initial_cash),
+                "--show-reasoning",
+                "--no-interactive"
+            ]
+            print(f"🐍 Using Poetry environment for subprocess execution")
+        else:
+            # Use direct Python for Render deployment or when Poetry is not available
+            python_executable = sys.executable or "python3"
+            cmd = [
+                python_executable, str(main_py_path),
+                "--tickers", req.tickers,
+                "--start-date", req.start_date,
+                "--end-date", req.end_date,
+                "--initial-cash", str(req.initial_cash),
+                "--show-reasoning",
+                "--no-interactive"
+            ]
+            print(f"🐍 Using direct Python execution (Render deployment or Poetry unavailable)")
+            print(f"🔧 Python executable: {python_executable}")
+        
+        print(f"🚀 Starting simulation with command: {' '.join(cmd)}")
+        print(f"📁 Working directory: {current_dir.parent}")
+        print(f"🌍 Environment: {'Render' if is_render_deployment else 'Local'}")
+        
         # Run the simulation with timeout and proper error handling
         try:
+            print(f"🔍 Debug: Environment variables set:")
+            print(f"   PYTHONPATH: {env.get('PYTHONPATH', 'Not set')}")
+            print(f"   ENVIRONMENT: {env.get('ENVIRONMENT', 'Not set')}")
+            print(f"   RENDER: {env.get('RENDER', 'Not set')}")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
