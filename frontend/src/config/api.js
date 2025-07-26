@@ -1,7 +1,9 @@
 /**
  * Dynamic API configuration that works across all platforms
  * Eliminates hardcoded ports and URLs
+ * Updated: 2024-07-26 - Render deployment optimization
  * Updated: 2025-07-26 - Blueprint fix deployed
+ * Sync trigger: Frontend redeployment to match backend commit ae63e0a
  */
 
 const getApiBaseUrl = () => {
