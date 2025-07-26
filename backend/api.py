@@ -895,13 +895,21 @@ async def run_simulation(req: RunRequest):
             
             print(f"✅ Simulation completed successfully. Output length: {len(output)} chars")
             
-            # Parse new format agent debug logs: e.g. '🔍 LLM DEBUG - Agent: peter_lynch_agent, Attempt: 1' followed by result
-            # Pattern to match agent debug entries
-            agent_pattern = r'🔍 LLM DEBUG - Agent: ([\w_]+), Attempt: \d+[\s\S]*?📄 Raw Result: signal=\'([^\']*)\' confidence=([\d.]+) reasoning=(["\'][\s\S]*?)(?=🔍|✅|$)'
-            agent_matches = re.findall(agent_pattern, output)
+            # Parse agent debug logs with more flexible patterns
+            # Try multiple patterns to match different output formats
+            agent_pattern_1 = r'🔍 LLM DEBUG - Agent: ([\w_]+), Attempt: \d+[\s\S]*?📄 Raw Result: signal=\'([^\']*)\' confidence=([\d.]+) reasoning=(["\'][\s\S]*?)(?=🔍|✅|$)'
+            agent_pattern_2 = r'Agent: ([\w_]+)[\s\S]*?Signal: ([\w]+)[\s\S]*?Confidence: ([\d.]+)[\s\S]*?Reasoning: ([\s\S]*?)(?=Agent:|$)'
+            agent_pattern_3 = r'([\w_]+_agent)[\s\S]*?signal["\']?\s*[:=]\s*["\']?([\w]+)["\']?[\s\S]*?confidence["\']?\s*[:=]\s*([\d.]+)[\s\S]*?reasoning["\']?\s*[:=]\s*["\']([\s\S]*?)["\']?(?=\w+_agent|$)'
+            
+            agent_matches = []
+            agent_matches.extend(re.findall(agent_pattern_1, output))
+            agent_matches.extend(re.findall(agent_pattern_2, output))
+            agent_matches.extend(re.findall(agent_pattern_3, output))
             
             agents = {}
             tickers = req.tickers.split(',') if ',' in req.tickers else [req.tickers]
+            
+            print(f"🔍 FLOW: Found {len(agent_matches)} agent matches using flexible patterns")
             
             for agent_name, signal, confidence, reasoning in agent_matches:
                 # Convert agent_name from snake_case to display name
@@ -925,10 +933,18 @@ async def run_simulation(req: RunRequest):
 
             print(f"🔍 FLOW: About to parse portfolio decisions...")
             
-            # Parse portfolio manager decisions from debug logs
-            # Pattern: 'Agent: portfolio_management_agent' followed by decisions data
-            portfolio_pattern = r'🔍 LLM DEBUG - Agent: portfolio_management_agent[\s\S]*?📄 Raw Result: decisions=\{([\s\S]*?)\}[\s\S]*?(?=🔍|✅|$)'
-            portfolio_match = re.search(portfolio_pattern, output)
+            # Parse portfolio manager decisions with multiple patterns
+            portfolio_patterns = [
+                r'🔍 LLM DEBUG - Agent: portfolio_management_agent[\s\S]*?📄 Raw Result: decisions=\{([\s\S]*?)\}[\s\S]*?(?=🔍|✅|$)',
+                r'portfolio_management_agent[\s\S]*?decisions[\s\S]*?\{([\s\S]*?)\}',
+                r'Portfolio Manager[\s\S]*?decisions[\s\S]*?\{([\s\S]*?)\}'
+            ]
+            
+            portfolio_match = None
+            for pattern in portfolio_patterns:
+                portfolio_match = re.search(pattern, output, re.IGNORECASE)
+                if portfolio_match:
+                    break
             
             decisions = {}
             if portfolio_match:
@@ -936,19 +952,66 @@ async def run_simulation(req: RunRequest):
                 # Parse the portfolio decision data structure
                 decision_text = portfolio_match.group(1)
                 # Extract ticker decisions - look for 'TICKER': PortfolioDecision(...)
-                ticker_pattern = r"'([A-Z]+)':\s*PortfolioDecision\(action='([^']*)',\s*quantity=([\d]+),\s*confidence=([\d.]+),\s*reasoning=\"([^\"]*)\""
-                ticker_matches = re.findall(ticker_pattern, decision_text)
+                ticker_patterns = [
+                    r"'([A-Z]+)':\s*PortfolioDecision\(action='([^']*)',\s*quantity=([\d]+),\s*confidence=([\d.]+),\s*reasoning=\"([^\"]*)\"",
+                    r'([A-Z]+)[\s\S]*?action[\s\S]*?([A-Z]+)[\s\S]*?quantity[\s\S]*?([\d]+)[\s\S]*?confidence[\s\S]*?([\d.]+)',
+                    r'([A-Z]+)[\s\S]*?(BUY|SELL|HOLD)'
+                ]
                 
-                for ticker, action, quantity, confidence, reasoning in ticker_matches:
-                    decisions[ticker] = {
-                        'action': action.upper(),  # Convert to uppercase for consistency
-                        'quantity': int(quantity),
-                        'confidence': float(confidence),
-                        'reasoning': reasoning
-                    }
+                ticker_matches = []
+                for ticker_pattern in ticker_patterns:
+                    ticker_matches.extend(re.findall(ticker_pattern, decision_text))
+                    if ticker_matches:
+                        break
+                
+                for match in ticker_matches:
+                    if len(match) >= 5:  # Full match with all fields
+                        ticker, action, quantity, confidence, reasoning = match[:5]
+                        decisions[ticker] = {
+                            'action': action.upper(),
+                            'quantity': int(quantity),
+                            'confidence': float(confidence),
+                            'reasoning': reasoning
+                        }
+                    elif len(match) >= 2:  # Basic match with ticker and action
+                        ticker, action = match[:2]
+                        decisions[ticker] = {
+                            'action': action.upper(),
+                            'quantity': 100,  # Default quantity
+                            'confidence': 0.7,  # Default confidence
+                            'reasoning': 'Parsed from simplified output'
+                        }
+                
                 print(f"🔍 FLOW: Parsed {len(decisions)} portfolio decisions")
             else:
                 print(f"🔍 FLOW: No portfolio match found")
+                # Create fallback decisions based on agent signals if no portfolio manager found
+                if agents:
+                    print(f"🔍 FLOW: Creating fallback decisions from {len(agents)} agent signals")
+                    for ticker in tickers:
+                        # Aggregate agent signals for this ticker
+                        buy_signals = sum(1 for agent_data in agents.values() 
+                                        if ticker in agent_data and agent_data[ticker]['signal'].upper() in ['BUY', 'BULLISH'])
+                        sell_signals = sum(1 for agent_data in agents.values() 
+                                         if ticker in agent_data and agent_data[ticker]['signal'].upper() in ['SELL', 'BEARISH'])
+                        
+                        if buy_signals > sell_signals:
+                            action = 'BUY'
+                            confidence = min(0.9, 0.5 + (buy_signals / len(agents)) * 0.4)
+                        elif sell_signals > buy_signals:
+                            action = 'SELL'
+                            confidence = min(0.9, 0.5 + (sell_signals / len(agents)) * 0.4)
+                        else:
+                            action = 'HOLD'
+                            confidence = 0.5
+                        
+                        decisions[ticker] = {
+                            'action': action,
+                            'quantity': 100,
+                            'confidence': round(confidence, 2),
+                            'reasoning': f'Aggregated from {len(agents)} agent signals: {buy_signals} buy, {sell_signals} sell'
+                        }
+                    print(f"🔍 FLOW: Created {len(decisions)} fallback decisions")
 
             print(f"🔍 FLOW: About to start database storage section...")
             
