@@ -404,13 +404,24 @@ class AgentChatRequest(BaseModel):
 @app.get("/health")
 async def health_check():
     """Optimized health check endpoint for Render reliability."""
-    import psutil
     import gc
     
+    # Try to import psutil, fallback gracefully if not available
     try:
-        # Get memory usage for monitoring
-        memory_info = psutil.virtual_memory()
-        memory_usage_mb = psutil.Process().memory_info().rss / 1024 / 1024
+        import psutil
+        psutil_available = True
+    except ImportError:
+        psutil_available = False
+    
+    try:
+        # Get memory usage for monitoring (if psutil available)
+        if psutil_available:
+            memory_info = psutil.virtual_memory()
+            memory_usage_mb = psutil.Process().memory_info().rss / 1024 / 1024
+            memory_percent = round(memory_info.percent, 2)
+        else:
+            memory_usage_mb = 0.0
+            memory_percent = 0.0
         
         # Quick environment check (no file system operations)
         env_status = {
@@ -455,7 +466,8 @@ async def health_check():
             "timestamp": time.time(),
             "uptime_seconds": time.time() - startup_time,
             "memory_usage_mb": round(memory_usage_mb, 2),
-            "memory_percent": round(memory_info.percent, 2),
+            "memory_percent": memory_percent,
+            "psutil_available": psutil_available,
             "environment": env_status,
             "dependencies": dependencies,
             "database": database_status,
