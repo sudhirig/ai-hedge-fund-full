@@ -789,15 +789,9 @@ async def run_simulation(req: RunRequest):
         if not main_py_path.exists():
             raise FileNotFoundError(f"main.py not found at {main_py_path}")
         
-        # Prepare command arguments with explicit Python path
-        python_executable = "/usr/local/bin/python3"  # Use system Python3
-        
-        # Fallback to sys.executable if system python3 not available
-        if not os.path.exists(python_executable):
-            python_executable = sys.executable
-            
+        # Use Poetry to run Python with all dependencies available
         cmd = [
-            python_executable, str(main_py_path),
+            "poetry", "run", "python", str(main_py_path),
             "--tickers", req.tickers,
             "--start-date", req.start_date,
             "--end-date", req.end_date,
@@ -808,7 +802,7 @@ async def run_simulation(req: RunRequest):
         
         print(f"🚀 Starting simulation with command: {' '.join(cmd)}")
         print(f"📁 Working directory: {current_dir.parent}")
-        print(f"🐍 Python executable: {python_executable}")
+        print(f"🐍 Using Poetry environment for subprocess execution")
         
         # Prepare environment with Python path
         env = os.environ.copy()
