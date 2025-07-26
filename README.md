@@ -345,178 +345,34 @@ ai-hedge-fund/
 ## Feature Requests
 
 If you have a feature request, please open an [issue](https://github.com/virattt/ai-hedge-fund/issues) and make sure it is tagged with `enhancement`.
-
-## License
-
----
-
-## 🛠️ **Development**
-
-### **📋 Prerequisites**
-- **Python 3.8+**: Required for backend development
-- **Node.js 16+**: Required for frontend development
-- **PostgreSQL 12+**: Database for production deployment
-- **Poetry**: Python dependency management
-- **Git**: Version control
-
-### **🔧 Development Setup**
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/ai-hedge-fund.git
 cd ai-hedge-fund
-
-# Backend setup
-cd backend
-poetry install
-cp .env.example .env
-# Edit .env with your API keys
-
-# Frontend setup
-cd ../frontend
-npm install
-
-# Start development servers
 ./scripts/start-platform.sh start
+
+# Manual setup
+docker-compose up -d
+# OR
+cd backend && poetry install && poetry run uvicorn api:app --reload
+cd frontend && npm install && npm start
 ```
 
-### **🧪 Testing**
-
+### **Required API Keys**
 ```bash
-# Backend tests
-cd backend
-poetry run pytest
-
-# Frontend tests
-cd frontend
-npm test
-
-# Integration tests
-./scripts/run-tests.sh
-```
-
-### **📁 Project Structure**
-
-```
-ai-hedge-fund/
-├── backend/                 # FastAPI backend
-│   ├── src/                # Source code
-│   │   ├── agents/         # AI agent implementations
-│   │   ├── services/       # Business logic
-│   │   ├── models/         # Data models
-│   │   └── api.py         # API endpoints
-│   ├── tests/             # Backend tests
-│   └── pyproject.toml     # Python dependencies
-├── frontend/               # React frontend
-│   ├── src/               # Source code
-│   │   ├── components/    # React components
-│   │   ├── services/      # API services
-│   │   └── config/        # Configuration
-│   ├── public/            # Static assets
-│   └── package.json       # Node dependencies
-├── database/              # Database schemas and migrations
-├── scripts/               # Deployment and utility scripts
-├── docs/                  # Documentation
-└── experiments/           # Performance optimization experiments
-```
-
-### **🔍 Code Quality**
-
-```bash
-# Python linting and formatting
-poetry run black src/
-poetry run flake8 src/
-poetry run mypy src/
-
-# JavaScript linting and formatting
-npm run lint
-npm run format
-```
+# Financial Data (Required)
+FINANCIAL_DATASETS_API_KEY=your_key_here
 
 ---
 
-## 🤝 **Contributing**
+## ⚖️ **License & Disclaimer**
 
-### **🌟 How to Contribute**
+**License**: MIT License - see [LICENSE](./LICENSE)
 
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Make your changes**: Follow the coding standards
-4. **Add tests**: Ensure your changes are tested
-5. **Commit your changes**: `git commit -m 'Add amazing feature'`
-6. **Push to the branch**: `git push origin feature/amazing-feature`
-7. **Open a Pull Request**: Describe your changes
-
-### **📝 Contribution Guidelines**
-
-**Code Standards:**
-- Follow PEP 8 for Python code
-- Use ESLint and Prettier for JavaScript
-- Write comprehensive tests for new features
-- Update documentation for API changes
-
-**Commit Messages:**
-- Use conventional commit format
-- Be descriptive and concise
-- Reference issues when applicable
-
-**Pull Request Process:**
-- Ensure all tests pass
-- Update README if needed
-- Request review from maintainers
-- Address feedback promptly
-
-### **🐛 Bug Reports**
-
-When reporting bugs, please include:
-- **Environment**: OS, Python/Node versions
-- **Steps to reproduce**: Clear reproduction steps
-- **Expected behavior**: What should happen
-- **Actual behavior**: What actually happens
-- **Logs**: Relevant error messages
-
-### **💡 Feature Requests**
-
-For new features, please provide:
-- **Use case**: Why is this feature needed?
-- **Proposed solution**: How should it work?
-- **Alternatives**: Other approaches considered
-- **Impact**: Who would benefit?
-
-### **📚 Documentation**
-
-Help improve documentation by:
-- Fixing typos and grammar
-- Adding examples and tutorials
-- Improving API documentation
-- Creating video tutorials
-
----
-
-## ⚖️ **License**
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🙏 **Acknowledgments**
-
-- **Famous Investors**: Inspired by the wisdom of Warren Buffett, Cathie Wood, and other legendary investors
-- **Open Source Community**: Built with amazing open-source tools and libraries
-- **Financial Data Providers**: Powered by high-quality financial data APIs
-- **AI/ML Community**: Leveraging cutting-edge language models and AI research
-
----
-
-## ⚠️ **Disclaimer**
-
-**This platform is for educational and research purposes only. It does not provide financial advice and should not be used for actual trading decisions. Always consult with qualified financial advisors before making investment decisions. Past performance does not guarantee future results.**
+**⚠️ Important**: This platform is for educational purposes only. Not financial advice. Consult qualified advisors for investment decisions.
 
 ---
 
 <div align="center">
 
-**🚀 Ready to revolutionize your investment analysis? Get started today! 🚀**
+**🚀 Ready to revolutionize your investment analysis? 🚀**
 
 [**🌟 Star this repo**](https://github.com/your-username/ai-hedge-fund) • [**🐛 Report Bug**](https://github.com/your-username/ai-hedge-fund/issues) • [**💡 Request Feature**](https://github.com/your-username/ai-hedge-fund/issues)
 
