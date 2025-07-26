@@ -67,7 +67,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local development
-        "https://*.render.com",   # Render frontend
+        "https://ai-hedge-fund-frontend.onrender.com",  # Render frontend
         "https://*.netlify.app",  # Netlify deployments
         "https://*.vercel.app",   # Vercel deployments
         "https://ai-hedge-fund-app.windsurf.build",  # Windsurf deployment
