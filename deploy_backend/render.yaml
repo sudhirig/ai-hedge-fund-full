@@ -2,8 +2,11 @@ services:
   - type: web
     name: ai-hedge-fund-api
     runtime: python
-    buildCommand: pip install poetry && poetry install
+    buildCommand: pip install poetry && poetry install --only=main
     startCommand: poetry run uvicorn api:app --host 0.0.0.0 --port $PORT
+    numInstances: 2
+    plan: starter
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.9
