@@ -9,6 +9,7 @@ services:
         value: 3.9
     cors:
       allowedOrigins:
+        - https://ai-hedge-fund-frontend.onrender.com
         - https://ai-hedge-fund-dashboard.windsurf.build
       allowedMethods:
         - GET
